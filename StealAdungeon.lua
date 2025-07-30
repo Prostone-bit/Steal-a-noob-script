@@ -1,5 +1,3 @@
-
-
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
@@ -13,13 +11,12 @@ local currentDistance = 15
 
 -- Variables de boost
 local walkSpeedBoost = 16
-local jumpPowerBoost = 50
+local jumpPowerBoost = 100
 local isSpeedEnabled = false
 local isJumpEnabled = false
 local isNoClipEnabled = false
 local noClipConnection = nil
-local isInvisible = false
-local originalTransparencies = {}
+
 
 -- Variables de fly
 local flySpeed = 50
@@ -27,28 +24,29 @@ local isFlying = false
 local bodyVelocity = nil
 local bodyAngularVelocity = nil
 local flyConnection = nil
+local isFlyNoClipEnabled = false
+local flyNoClipConnection = nil
 
 -- Variables de troll
 local isSpinAttackEnabled = false
 local spinConnection = nil
-local spinSpeed = 628318
-local isTpToPlayersEnabled = false
-local tpToPlayersConnection = nil
+local spinSpeed = 2000000 -- Vitesse ultra rapide
+
+local isStalkerEnabled = false
+local stalkerConnection = nil
+local stalkerDistance = 3 -- Distance derrière le joueur
+local selectedStalkerTarget = "" -- Joueur ciblé pour le stalker
+local stalkerPlayerDropdown = nil
+local stalkerSpeed = 1.0 -- Multiplicateur de vitesse du stalker (1.0 = normal)
+
+-- Variables pour la liste TP joueurs
+local playerListDropdown = nil
+local selectedPlayerName = ""
 
 -- Nouvelles variables de troll
 local isSlowSpinEnabled = false
 local slowSpinConnection = nil
 local slowSpinSpeed = 157 -- 25 tours par seconde (25 * 2π)
-local isScreenShakeEnabled = false
-local screenShakeConnection = nil
-local isJumpSpamEnabled = false
-local jumpSpamConnection = nil
-local isChatSpamEnabled = false
-local chatSpamConnection = nil
-local isLagBombEnabled = false
-local lagBombConnection = nil
-local isCameraFlipEnabled = false
-local cameraFlipConnection = nil
 
 
 
@@ -56,10 +54,18 @@ local cameraFlipConnection = nil
 local isAntiFallEnabled = false
 local antiFallConnection = nil
 
--- Variables d'anti-void
+-- Variables d'anti-void amélioré
 local isAntiVoidEnabled = false
 local antiVoidConnection = nil
 local voidThreshold = -500 -- Seuil Y en dessous duquel c'est considéré comme le vide
+local lastSafePosition = nil -- Dernière position sûre sauvegardée
+local safePositionTimer = 0 -- Timer pour sauvegarder les positions sûres
+
+-- Variables anti-spin attack
+local isAntiSpinEnabled = false
+local antiSpinConnection = nil
+local lastAntiSpinPosition = nil
+local antiSpinPositionTimer = 0
 
 -- Variables ESP
 local isEspEnabled = false
@@ -75,6 +81,8 @@ local espColor = Color3.fromRGB(255, 0, 0)
 -- Variables de sauvegarde de positions
 local savedPositions = {}
 local currentSavedPositionName = ""
+local selectedSavedPosition = ""
+local savedPositionsDropdown = nil
 
 -- Variables de configuration
 local configData = {
@@ -87,10 +95,9 @@ local configData = {
     isSpeedEnabled = false,
     isJumpEnabled = false,
     isNoClipEnabled = false,
-    isInvisible = false,
+
     isFlying = false,
     isSpinAttackEnabled = false,
-    isTpToPlayersEnabled = false,
     isAntiFallEnabled = false,
     isFpsBoostEnabled = false
   }
@@ -106,22 +113,23 @@ local originalSettings = {}
 
 -- Fonction pour sauvegarder une position
 local function saveCurrentPosition(name)
+  local success = false
   pcall(function()
     if not name or name == "" then 
       print("Nom de position invalide!")
-      return false 
+      return
     end
 
     local char = player.Character
     if not char then 
       print("Personnage non trouvé!")
-      return false 
+      return
     end
 
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then 
       print("HumanoidRootPart non trouvé!")
-      return false 
+      return
     end
 
     savedPositions[name] = {
@@ -130,9 +138,9 @@ local function saveCurrentPosition(name)
     }
 
     print("Position sauvegardée: " .. name .. " à " .. tostring(root.Position))
-    return true
+    success = true
   end)
-  return false
+  return success
 end
 
 -- Fonction pour se téléporter à une position sauvegardée
@@ -190,6 +198,27 @@ local function teleportToSavedPosition(name)
   return success
 end
 
+-- Fonction pour mettre à jour la dropdown des positions sauvegardées
+local function updateSavedPositionsDropdown()
+  if not savedPositionsDropdown then return end
+
+  local positionNames = {}
+  for name, _ in pairs(savedPositions) do
+    table.insert(positionNames, name)
+  end
+
+  if #positionNames == 0 then
+    positionNames = {"Aucune position sauvegardée"}
+  end
+
+  -- Mettre à jour la dropdown
+  pcall(function()
+    savedPositionsDropdown:Refresh(positionNames, true)
+  end)
+
+  print("Dropdown mise à jour: " .. #positionNames .. " positions disponibles")
+end
+
 -- Fonction pour sauvegarder la configuration
 local function saveConfiguration()
   configData.savedSettings = {
@@ -200,10 +229,9 @@ local function saveConfiguration()
     isSpeedEnabled = isSpeedEnabled,
     isJumpEnabled = isJumpEnabled,
     isNoClipEnabled = isNoClipEnabled,
-    isInvisible = isInvisible,
+
     isFlying = isFlying,
     isSpinAttackEnabled = isSpinAttackEnabled,
-    isTpToPlayersEnabled = isTpToPlayersEnabled,
     isAntiFallEnabled = isAntiFallEnabled,
     isFpsBoostEnabled = isFpsBoostEnabled
   }
@@ -296,10 +324,10 @@ local function restoreConfiguration()
   local settings = configData.savedSettings
 
   -- Restaurer les valeurs des sliders
-  walkSpeedBoost = settings.walkSpeed
-  jumpPowerBoost = settings.jumpPower
-  flySpeed = settings.flySpeed
-  spinSpeed = settings.spinSpeed
+  walkSpeedBoost = settings.walkSpeed or 16
+  jumpPowerBoost = settings.jumpPower or 50
+  flySpeed = settings.flySpeed or 50
+  spinSpeed = settings.spinSpeed or 628318
 
 
 
@@ -319,10 +347,7 @@ local function restoreConfiguration()
     isNoClipEnabled = true
     toggleNoClip()
   end
-  if settings.isInvisible then
-    isInvisible = true
-    toggleInvisibility()
-  end
+
   if settings.isAntiFallEnabled then
     isAntiFallEnabled = true
     toggleAntiFall()
@@ -482,9 +507,33 @@ local function toggleJump()
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if humanoid then
       if isJumpEnabled then
-        humanoid.JumpPower = jumpPowerBoost
+        -- Vérifier si le nouveau système JumpHeight existe
+        local success, _ = pcall(function()
+          return humanoid.JumpHeight
+        end)
+        
+        if success then
+          -- Nouveau système - utiliser JumpHeight
+          humanoid.JumpHeight = jumpPowerBoost / 3.5
+          print("✅ Boost de saut activé (JumpHeight): " .. (jumpPowerBoost / 3.5))
+        else
+          -- Ancien système - utiliser JumpPower
+          humanoid.JumpPower = jumpPowerBoost
+          print("✅ Boost de saut activé (JumpPower): " .. jumpPowerBoost)
+        end
       else
-        humanoid.JumpPower = 50
+        -- Restaurer les valeurs par défaut
+        local success, _ = pcall(function()
+          return humanoid.JumpHeight
+        end)
+        
+        if success then
+          humanoid.JumpHeight = 7.2 -- Valeur par défaut JumpHeight
+          print("❌ Boost de saut désactivé (JumpHeight restauré)")
+        else
+          humanoid.JumpPower = 50 -- Valeur par défaut JumpPower
+          print("❌ Boost de saut désactivé (JumpPower restauré)")
+        end
       end
     end
   end
@@ -543,46 +592,7 @@ local function toggleNoClip()
   end
 end
 
--- Fonction pour activer/désactiver l'invisibilité
-local function toggleInvisibility()
-  local char = player.Character
-  if not char then return end
-
-  if isInvisible then
-    -- Activer l'invisibilité
-    for _, part in pairs(char:GetChildren()) do
-      if part:IsA("BasePart") then
-        originalTransparencies[part] = part.Transparency
-        part.Transparency = 1
-      elseif part:IsA("Accessory") then
-        local handle = part:FindFirstChild("Handle")
-        if handle then
-          originalTransparencies[handle] = handle.Transparency
-          handle.Transparency = 1
-        end
-      end
-    end
-
-    -- Rendre la tête invisible aussi
-    local head = char:FindFirstChild("Head")
-    if head then
-      for _, child in pairs(head:GetChildren()) do
-        if child:IsA("Decal") then
-          originalTransparencies[child] = child.Transparency
-          child.Transparency = 1
-        end
-      end
-    end
-  else
-    -- Désactiver l'invisibilité
-    for part, transparency in pairs(originalTransparencies) do
-      if part and part.Parent then
-        part.Transparency = transparency
-      end
-    end
-    originalTransparencies = {}
-  end
-end
+-- Fonction d'invisibilité simple supprimée
 
 -- Variables pour les contrôles mobiles
 local flyGui = nil
@@ -620,7 +630,7 @@ local function createMobileToggleButton()
   -- Effet visuel au clic
   toggleButton.MouseButton1Click:Connect(function()
     isPanelVisible = not isPanelVisible
-    
+
     -- Animer le bouton
     local tween = game:GetService("TweenService"):Create(
       toggleButton,
@@ -628,7 +638,7 @@ local function createMobileToggleButton()
       {Size = UDim2.new(0, 70, 0, 70)}
     )
     tween:Play()
-    
+
     tween.Completed:Connect(function()
       local returnTween = game:GetService("TweenService"):Create(
         toggleButton,
@@ -772,6 +782,79 @@ local mobileControls = {
   down = false
 }
 
+-- Fonction pour NoClip ultra pendant le fly (traverse vraiment tout)
+local function toggleFlyNoClip()
+  local char = player.Character
+  if not char then return end
+
+  if isFlyNoClipEnabled then
+    -- Activer NoClip ULTRA - traverse absolument tout
+    flyNoClipConnection = RunService.Heartbeat:Connect(function()
+      local currentChar = player.Character
+      if currentChar and isFlying then
+        -- Désactiver TOUTES les collisions de TOUT le personnage
+        for _, part in pairs(currentChar:GetDescendants()) do
+          if part:IsA("BasePart") then
+            part.CanCollide = false
+            part.AssemblyLinearVelocity = Vector3.new(0, 0, 0) -- Neutraliser la physique
+            part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+          end
+        end
+
+        -- Désactiver complètement la physique du personnage
+        local humanoid = currentChar:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+          humanoid.PlatformStand = true
+          humanoid.Sit = false
+          -- Empêcher tous les états qui causent des collisions
+          if humanoid:GetState() == Enum.HumanoidStateType.Physics or
+             humanoid:GetState() == Enum.HumanoidStateType.FallingDown or
+             humanoid:GetState() == Enum.HumanoidStateType.Ragdoll then
+            humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+          end
+        end
+
+        -- Forcer la position du root sans collision
+        local root = currentChar:FindFirstChild("HumanoidRootPart")
+        if root then
+          root.CanCollide = false
+          root.Anchored = false
+          -- Supprimer toutes les forces externes qui pourraient causer des collisions
+          for _, obj in pairs(root:GetChildren()) do
+            if obj:IsA("Attachment") or obj:IsA("Weld") or obj:IsA("Motor6D") then
+              -- Garder les attachments nécessaires mais supprimer les contraintes de collision
+            end
+          end
+        end
+      end
+    end)
+    print("NoClip ULTRA activé pour le fly - Traverse absolument tout!")
+  else
+    -- Désactiver NoClip ultra
+    if flyNoClipConnection then
+      flyNoClipConnection:Disconnect()
+      flyNoClipConnection = nil
+    end
+
+    -- Restaurer les collisions normales (uniquement si pas en fly normal)
+    if not isFlying then
+      local char = player.Character
+      if char then
+        for _, part in pairs(char:GetDescendants()) do
+          if part:IsA("BasePart") then
+            if part.Name == "HumanoidRootPart" then
+              part.CanCollide = false -- HumanoidRootPart reste sans collision
+            else
+              part.CanCollide = true -- Autres parties retrouvent leurs collisions
+            end
+          end
+        end
+      end
+    end
+    print("NoClip ULTRA désactivé pour le fly!")
+  end
+end
+
 -- Fonction pour activer/désactiver le fly
 local function toggleFly()
   local char = player.Character
@@ -838,7 +921,7 @@ local function toggleFly()
         end
       end)
 
-      -- Boutons haut/bas
+            -- Boutons haut/bas
       upButton.TouchTap:Connect(function()
         mobileControls.up = not mobileControls.up
         upButton.BackgroundColor3 = mobileControls.up and Color3.new(0, 1, 0) or Color3.new(0, 0.8, 0)
@@ -856,7 +939,14 @@ local function toggleFly()
       local camera = workspace.CurrentCamera
       local lookDirection = camera.CFrame.LookVector
       local rightDirection = camera.CFrame.RightVector
-      local upDirection = camera.CFrame.UpVector -- Utiliser l'UpVector de la caméra pour suivre son orientation
+      local upDirection = camera.CFrame.UpVector
+
+      -- NOUVEAU: Faire tourner le personnage selon la direction de la caméra
+      local cameraLookDirectionFlat = Vector3.new(lookDirection.X, 0, lookDirection.Z).Unit
+      if cameraLookDirectionFlat.Magnitude > 0 then
+        local targetCFrame = CFrame.lookAt(root.Position, root.Position + cameraLookDirectionFlat, Vector3.new(0, 1, 0))
+        root.CFrame = targetCFrame
+      end
 
       local velocity = Vector3.new(0, 0, 0)
 
@@ -909,6 +999,12 @@ local function toggleFly()
     if bodyAngularVelocity then bodyAngularVelocity:Destroy() bodyAngularVelocity = nil end
     if flyConnection then flyConnection:Disconnect() flyConnection = nil end
 
+    -- Désactiver le NoClip ultra si activé
+    if isFlyNoClipEnabled then
+      isFlyNoClipEnabled = false
+      toggleFlyNoClip()
+    end
+
     -- Supprimer l'interface mobile
     if flyGui then
       flyGui:Destroy()
@@ -932,7 +1028,7 @@ local function toggleFly()
   end
 end
 
--- Fonction pour le spin attack (rotation modérée mais efficace)
+-- Fonction pour le spin attack GLOBAL (affecte TOUS les joueurs)
 local function toggleSpinAttack()
   local char = player.Character
   if not char then return end
@@ -941,97 +1037,111 @@ local function toggleSpinAttack()
   if not root then return end
 
   if isSpinAttackEnabled then
-    -- Activer le spin attack avec rotation modérée (réduite à 1000 pour être plus contrôlable)
+    -- Spin attack ULTRA RAPIDE sans limitations
     local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
     bodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
-    bodyAngularVelocity.AngularVelocity = Vector3.new(0, 1000, 0) -- Réduit de 628318 à 1000
+    bodyAngularVelocity.AngularVelocity = Vector3.new(0, spinSpeed, 0)
     bodyAngularVelocity.Parent = root
 
-    -- Stabiliser le personnage pour éviter qu'il soit propulsé
-    local bodyPosition = Instance.new("BodyPosition")
-    bodyPosition.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bodyPosition.Position = root.Position
-    bodyPosition.D = 1000 -- Amortissement
-    bodyPosition.P = 10000 -- Puissance
-    bodyPosition.Parent = root
-
-    -- Activer l'effet visuel seulement
+    -- Effet visuel intense
     for _, part in pairs(char:GetChildren()) do
       if part:IsA("BasePart") then
-        part.Material = Enum.Material.Neon -- Effet visuel
-        -- Garder CanCollide false pour éviter l'auto-propulsion
-        if part.Name ~= "HumanoidRootPart" then
-          part.CanCollide = false
-        end
+        part.Material = Enum.Material.ForceField
+        part.CanCollide = false
       end
     end
 
-    -- Zone d'effet invisible pour affecter les autres joueurs
-    local effectPart = Instance.new("Part")
-    effectPart.Name = "SpinAttackEffect"
-    effectPart.Parent = workspace
-    effectPart.Anchored = true
-    effectPart.CanCollide = false
-    effectPart.Transparency = 1
-    effectPart.Size = Vector3.new(10, 10, 10)
-    effectPart.Shape = Enum.PartType.Ball
-
-    -- Maintenir la rotation ultra-rapide et l'effet
-    spinConnection = RunService.Stepped:Connect(function()
+    -- Maintenir la rotation ULTRA rapide et affecter TOUS les joueurs
+    spinConnection = RunService.Heartbeat:Connect(function()
       if root and root.Parent then
-        -- Maintenir la rotation
+        -- Force la rotation maximale
         local currentAngularVelocity = root:FindFirstChildOfClass("BodyAngularVelocity")
         if currentAngularVelocity then
           currentAngularVelocity.AngularVelocity = Vector3.new(0, spinSpeed, 0)
           currentAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
         else
-          -- Recréer si détruit
           local newBodyAngularVelocity = Instance.new("BodyAngularVelocity")
           newBodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
           newBodyAngularVelocity.AngularVelocity = Vector3.new(0, spinSpeed, 0)
           newBodyAngularVelocity.Parent = root
         end
 
-        -- Maintenir la position stable
-        local currentBodyPosition = root:FindFirstChildOfClass("BodyPosition")
-        if currentBodyPosition then
-          currentBodyPosition.Position = root.Position
-        end
+        -- NOUVEAU: Affecter TOUS les joueurs sur le serveur (distance illimitée)
+        for _, otherPlayer in pairs(Players:GetPlayers()) do
+          if otherPlayer ~= player and otherPlayer.Character then
+            local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local otherHumanoid = otherPlayer.Character:FindFirstChildOfClass("Humanoid")
 
-        -- Positionner la zone d'effet
-        if effectPart and effectPart.Parent then
-          effectPart.Position = root.Position
-
-          -- Détecter et propulser les autres joueurs dans la zone
-          for _, otherPlayer in pairs(Players:GetPlayers()) do
-            if otherPlayer ~= player and otherPlayer.Character then
-              local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
-              if otherRoot then
-                local distance = (otherRoot.Position - root.Position).Magnitude
-                if distance <= 5 then -- Rayon d'effet de 5 studs
-                  -- Créer une force de propulsion
-                  local direction = (otherRoot.Position - root.Position).Unit
-                  local forceValue = 50 -- Force de propulsion
-
-                  -- Appliquer la force
-                  local bodyVelocity = otherRoot:FindFirstChild("TempSpinForce")
-                  if not bodyVelocity then
-                    bodyVelocity = Instance.new("BodyVelocity")
-                    bodyVelocity.Name = "TempSpinForce"
-                    bodyVelocity.Parent = otherRoot
-                  end
-                  bodyVelocity.MaxForce = Vector3.new(math.huge, 0, math.huge)
-                  bodyVelocity.Velocity = direction * forceValue
-
-                  -- Supprimer la force après un court moment
-                  game:GetService("Debris"):AddItem(bodyVelocity, 0.1)
+            if otherRoot and otherHumanoid then
+              pcall(function()
+                -- Force de spin globale ULTRA puissante
+                local spinForce = otherRoot:FindFirstChild("GlobalSpinForce")
+                if not spinForce then
+                  spinForce = Instance.new("BodyAngularVelocity")
+                  spinForce.Name = "GlobalSpinForce"
+                  spinForce.Parent = otherRoot
                 end
-              end
+
+                spinForce.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                spinForce.AngularVelocity = Vector3.new(
+                  math.random(-spinSpeed, spinSpeed) * 0.3,
+                  spinSpeed * 0.8,
+                  math.random(-spinSpeed, spinSpeed) * 0.3
+                )
+
+                -- Force de LANCEMENT spectaculaire vers le ciel
+                local launchForce = otherRoot:FindFirstChild("GlobalLaunch")
+                if not launchForce then
+                  launchForce = Instance.new("BodyVelocity")
+                  launchForce.Name = "GlobalLaunch"
+                  launchForce.Parent = otherRoot
+                end
+
+                -- LANCEMENT SPECTACULAIRE - très haut dans le ciel
+                local launchDirection = Vector3.new(
+                  math.random(-50, 50),  -- Un peu de côté
+                  math.random(200, 500), -- TRÈS HAUT
+                  math.random(-50, 50)   -- Un peu de côté
+                )
+
+                launchForce.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                launchForce.Velocity = launchDirection
+
+                -- Force anti-gravité temporaire pour maintenir en l'air
+                local antiGravity = otherRoot:FindFirstChild("AntiGravity")
+                if not antiGravity then
+                  antiGravity = Instance.new("BodyPosition")
+                  antiGravity.Name = "AntiGravity"
+                  antiGravity.Parent = otherRoot
+                end
+
+                antiGravity.MaxForce = Vector3.new(0, math.huge, 0)
+                antiGravity.Position = otherRoot.Position + Vector3.new(0, math.random(100, 300), 0)
+
+                -- État chaotique plus fréquent
+                if math.random(1, 5) == 1 then -- 20% de chance
+                  otherHumanoid:ChangeState(Enum.HumanoidStateType.Ragdoll)
+                  task.spawn(function()
+                    task.wait(0.5)
+                    if otherHumanoid and otherHumanoid.Parent then
+                      otherHumanoid:ChangeState(Enum.HumanoidStateType.Running)
+                    end
+                  end)
+                end
+
+                -- Nettoyer après des délais différents pour un effet prolongé
+                game:GetService("Debris"):AddItem(spinForce, 1.5)
+                game:GetService("Debris"):AddItem(launchForce, 0.8)
+                game:GetService("Debris"):AddItem(antiGravity, 2.0)
+              end)
             end
           end
         end
       end
     end)
+
+    print("🌪️ SPIN ATTACK GLOBAL ACTIVÉ! Affecte TOUS les joueurs sur le serveur!")
+    print("💥 Vitesse: " .. spinSpeed .. " rad/s - IMPACT MONDIAL!")
   else
     -- Désactiver le spin attack
     if spinConnection then
@@ -1048,10 +1158,18 @@ local function toggleSpinAttack()
       end
     end
 
-    -- Supprimer la zone d'effet
-    local effectPart = workspace:FindFirstChild("SpinAttackEffect")
-    if effectPart then
-      effectPart:Destroy()
+    -- Nettoyer les effets sur tous les joueurs
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+      if otherPlayer ~= player and otherPlayer.Character then
+        local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if otherRoot then
+          for _, obj in pairs(otherRoot:GetChildren()) do
+            if obj.Name == "GlobalSpinForce" or obj.Name == "GlobalLaunch" or obj.Name == "AntiGravity" then
+              obj:Destroy()
+            end
+          end
+        end
+      end
     end
 
     -- Restaurer l'apparence normale
@@ -1059,10 +1177,12 @@ local function toggleSpinAttack()
       if part:IsA("BasePart") then
         part.Material = Enum.Material.Plastic
         if part.Name ~= "HumanoidRootPart" then
-          part.CanCollide = false
+          part.CanCollide = true
         end
       end
     end
+
+    print("Spin attack global désactivé - Tous les joueurs libérés!")
   end
 end
 
@@ -1109,45 +1229,221 @@ local function toggleAntiFall()
   end
 end
 
--- Fonction pour activer/désactiver l'anti-void
+-- Fonction pour activer/désactiver l'anti-spin attack
+local function toggleAntiSpin()
+  local char = player.Character
+  if not char then return end
+
+  if isAntiSpinEnabled then
+    -- Initialiser la position de sécurité
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+      lastAntiSpinPosition = root.CFrame
+      antiSpinPositionTimer = 0
+    end
+
+    -- Activer l'anti-spin attack amélioré
+    antiSpinConnection = RunService.Heartbeat:Connect(function()
+      local currentChar = player.Character
+      if currentChar then
+        local currentRoot = currentChar:FindFirstChild("HumanoidRootPart")
+        if currentRoot then
+          -- Sauvegarder régulièrement la position sûre
+          if not isSpinAttackEnabled and not isSlowSpinEnabled then
+            antiSpinPositionTimer = antiSpinPositionTimer + 1
+            if antiSpinPositionTimer >= 15 then -- Toutes les 15 frames (environ 0.25 sec)
+              lastAntiSpinPosition = currentRoot.CFrame
+              antiSpinPositionTimer = 0
+            end
+          end
+
+          local wasSpinAttacked = false
+
+          -- Détecter et supprimer tous les BodyAngularVelocity non autorisés
+          for _, obj in pairs(currentRoot:GetChildren()) do
+            if obj:IsA("BodyAngularVelocity") then
+              -- Vérifier si c'est un spin attack externe (pas le nôtre)
+              if obj.Name == "GlobalSpinForce" or 
+                 (not isSpinAttackEnabled and not isSlowSpinEnabled) or
+                 (obj.AngularVelocity.Y > 1000 and not isSpinAttackEnabled) then
+
+                wasSpinAttacked = true
+                obj:Destroy()
+                print("🛡️ Spin attack détecté et bloqué!")
+              end
+            end
+          end
+
+          -- Détecter et supprimer les forces de lancement non autorisées
+          for _, obj in pairs(currentRoot:GetChildren()) do
+            if obj:IsA("BodyVelocity") and obj.Name == "GlobalLaunch" then
+              wasSpinAttacked = true
+              obj:Destroy()
+              print("🛡️ Force de lancement bloquée!")
+            end
+          end
+
+          -- Détecter et supprimer l'anti-gravité forcée
+          for _, obj in pairs(currentRoot:GetChildren()) do
+            if obj:IsA("BodyPosition") and obj.Name == "AntiGravity" then
+              wasSpinAttacked = true
+              obj:Destroy()
+              print("🛡️ Anti-gravité forcée bloquée!")
+            end
+          end
+
+          -- Détecter la rotation excessive non autorisée
+          local currentAngularVelocity = currentRoot.AssemblyAngularVelocity
+          if not isSpinAttackEnabled and not isSlowSpinEnabled then
+            if currentAngularVelocity.Magnitude > 50 then -- Rotation trop rapide détectée
+              wasSpinAttacked = true
+              currentRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+              print("🛡️ Rotation excessive détectée et arrêtée!")
+            end
+          end
+
+          -- Si un spin attack a été détecté, téléporter à la position de sécurité
+          if wasSpinAttacked and lastAntiSpinPosition then
+            -- Arrêter complètement toute rotation
+            currentRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            currentRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+
+            -- Téléporter à la position de sécurité
+            currentRoot.CFrame = lastAntiSpinPosition
+
+            -- Stabiliser le personnage
+            local humanoid = currentChar:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+              humanoid:ChangeState(Enum.HumanoidStateType.Running)
+            end
+
+            print("🚀 Téléporté à la position de sécurité après détection de spin attack!")
+
+            -- Mettre à jour la position de sécurité
+            lastAntiSpinPosition = currentRoot.CFrame
+          end
+
+          -- Stabiliser le personnage s'il est en ragdoll à cause d'un spin attack
+          local humanoid = currentChar:FindFirstChildOfClass("Humanoid")
+          if humanoid then
+            local currentState = humanoid:GetState()
+            if currentState == Enum.HumanoidStateType.Ragdoll or 
+               currentState == Enum.HumanoidStateType.Physics then
+              -- Vérifier si c'est à cause d'un spin attack externe
+              if not isSpinAttackEnabled then
+                humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                print("🛡️ État ragdoll bloqué!")
+
+                -- Si on a une position de sécurité, s'y téléporter
+                if lastAntiSpinPosition then
+                  currentRoot.CFrame = lastAntiSpinPosition
+                  print("🚀 Retour à la position de sécurité après ragdoll!")
+                end
+              end
+            end
+          end
+
+          -- Nettoyer la vélocité excessive non autorisée
+          if currentRoot.Velocity.Y > 100 and not isFlying and not isSpinAttackEnabled then
+            currentRoot.Velocity = Vector3.new(currentRoot.Velocity.X, 0, currentRoot.Velocity.Z)
+            print("🛡️ Vélocité excessive bloquée!")
+          end
+        end
+      end
+    end)
+    print("🛡️ Anti-spin attack AMÉLIORÉ activé!")
+    print("📍 Système de sauvegarde de position activé!")
+  else
+    -- Désactiver l'anti-spin attack
+    if antiSpinConnection then
+      antiSpinConnection:Disconnect()
+      antiSpinConnection = nil
+    end
+    lastAntiSpinPosition = nil
+    antiSpinPositionTimer = 0
+    print("❌ Anti-spin attack désactivé! Position de sécurité effacée.")
+  end
+end
+
+-- Fonction pour activer/désactiver l'anti-void amélioré
 local function toggleAntiVoid()
   local char = player.Character
   if not char then return end
 
   if isAntiVoidEnabled then
-    -- Activer l'anti-void
+    -- Initialiser la première position sûre
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root and root.Position.Y > voidThreshold then
+      lastSafePosition = root.CFrame
+    end
+
+    -- Activer l'anti-void amélioré
     antiVoidConnection = RunService.Heartbeat:Connect(function()
       local currentChar = player.Character
       if currentChar then
-        local root = currentChar:FindFirstChild("HumanoidRootPart")
-        if root then
-          -- Vérifier si le joueur est tombé sous la map
-          if root.Position.Y < voidThreshold then
-            -- Téléporter vers une position sûre (spawn ou dernière position connue)
-            local spawnLocation = workspace:FindFirstChild("SpawnLocation")
-            if spawnLocation then
-              root.CFrame = spawnLocation.CFrame + Vector3.new(0, 5, 0)
-              print("Anti-void activé! Téléporté au spawn.")
+        local currentRoot = currentChar:FindFirstChild("HumanoidRootPart")
+        if currentRoot then
+          local currentPosition = currentRoot.Position
+
+          -- Sauvegarder les positions sûres régulièrement
+          if currentPosition.Y > voidThreshold + 50 then -- Position bien au-dessus du seuil
+            safePositionTimer = safePositionTimer + 1
+            if safePositionTimer >= 30 then -- Sauvegarder toutes les 30 frames (environ 0.5 sec)
+              lastSafePosition = currentRoot.CFrame
+              safePositionTimer = 0
+            end
+          end
+
+          -- Vérifier si le joueur est tombé dans le vide
+          if currentPosition.Y < voidThreshold then
+            -- Méthode 1: Utiliser la dernière position sûre sauvegardée
+            if lastSafePosition then
+              currentRoot.CFrame = lastSafePosition + Vector3.new(0, 5, 0)
+              print("🛡️ Anti-void activé! Téléporté à la dernière position sûre.")
             else
-              -- Si pas de spawn, téléporter à une hauteur sûre
-              root.CFrame = CFrame.new(root.Position.X, 100, root.Position.Z)
-              print("Anti-void activé! Téléporté en hauteur.")
+              -- Méthode 2: Chercher le spawn
+              local spawnLocation = workspace:FindFirstChild("SpawnLocation")
+              if spawnLocation then
+                currentRoot.CFrame = spawnLocation.CFrame + Vector3.new(0, 5, 0)
+                print("🛡️ Anti-void activé! Téléporté au spawn.")
+              else
+                -- Méthode 3: Position de secours au centre de la map
+                local safeHeight = math.max(100, math.abs(voidThreshold) + 200)
+                currentRoot.CFrame = CFrame.new(0, safeHeight, 0)
+                print("🛡️ Anti-void activé! Téléporté à une position de secours.")
+              end
             end
 
-            -- Réinitialiser la vélocité pour éviter de continuer à tomber
-            root.Velocity = Vector3.new(0, 0, 0)
+            -- Réinitialiser complètement la vélocité et les forces
+            currentRoot.Velocity = Vector3.new(0, 0, 0)
+            currentRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            currentRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+
+            -- Stabiliser le personnage
+            local humanoid = currentChar:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+              humanoid:ChangeState(Enum.HumanoidStateType.Running)
+            end
+
+            -- Mettre à jour la position sûre avec la nouvelle position
+            lastSafePosition = currentRoot.CFrame
+            print("📍 Nouvelle position sûre enregistrée: " .. tostring(currentRoot.Position))
           end
         end
       end
     end)
-    print("Anti-void activé! Seuil: Y < " .. voidThreshold)
+    print("🛡️ Anti-void AMÉLIORÉ activé!")
+    print("📊 Seuil: Y < " .. voidThreshold)
+    print("💾 Système de positions sûres: ACTIVÉ")
   else
     -- Désactiver l'anti-void
     if antiVoidConnection then
       antiVoidConnection:Disconnect()
       antiVoidConnection = nil
     end
-    print("Anti-void désactivé!")
+    lastSafePosition = nil
+    safePositionTimer = 0
+    print("❌ Anti-void désactivé - Positions sûres effacées!")
   end
 end
 
@@ -1163,7 +1459,15 @@ end
 
 
 
--- Fonctions ESP avancées
+-- Variables ESP avancées
+local espThickness = 2
+local espTransparency = 0.3
+local espAnimation = false
+local espGradient = false
+local espHealthBar = false
+local espBoxes = false
+
+-- Fonctions ESP améliorées
 local function createPlayerHighlight(targetPlayer)
   if not targetPlayer.Character then return end
 
@@ -1171,9 +1475,23 @@ local function createPlayerHighlight(targetPlayer)
   highlight.Parent = targetPlayer.Character
   highlight.FillColor = espColor
   highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-  highlight.FillTransparency = 0.5
+  highlight.FillTransparency = espTransparency
   highlight.OutlineTransparency = 0
   highlight.Adornee = targetPlayer.Character
+
+  -- Animation pulsante si activée
+  if espAnimation then
+    local connection = RunService.Heartbeat:Connect(function()
+      if highlight and highlight.Parent then
+        local time = tick()
+        local pulse = (math.sin(time * 3) + 1) / 2
+        highlight.FillTransparency = espTransparency + (pulse * 0.3)
+      else
+        connection:Disconnect()
+      end
+    end)
+    espObjects[targetPlayer.Name .. "_highlight_animation"] = connection
+  end
 
   espObjects[targetPlayer.Name .. "_highlight"] = highlight
 end
@@ -1182,7 +1500,6 @@ local function createPlayerTracer(targetPlayer)
   if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
   if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
 
-  local camera = workspace.CurrentCamera
   local targetRoot = targetPlayer.Character.HumanoidRootPart
   local myRoot = player.Character.HumanoidRootPart
 
@@ -1190,7 +1507,7 @@ local function createPlayerTracer(targetPlayer)
   local distance = (targetRoot.Position - myRoot.Position).Magnitude
   if distance > tracerDistance then return end
 
-  -- Créer le tracer (ligne)
+  -- Créer le tracer (ligne) amélioré
   local beam = Instance.new("Beam")
   local attachment0 = Instance.new("Attachment")
   local attachment1 = Instance.new("Attachment")
@@ -1200,13 +1517,140 @@ local function createPlayerTracer(targetPlayer)
 
   beam.Attachment0 = attachment0
   beam.Attachment1 = attachment1
-  beam.Color = ColorSequence.new(espColor)
-  beam.Width0 = 0.5
-  beam.Width1 = 0.5
-  beam.Transparency = NumberSequence.new(0.3)
+
+  -- Design amélioré
+  if espGradient then
+    local colorSequence = ColorSequence.new({
+      ColorSequenceKeypoint.new(0, espColor),
+      ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+      ColorSequenceKeypoint.new(1, espColor)
+    })
+    beam.Color = colorSequence
+  else
+    beam.Color = ColorSequence.new(espColor)
+  end
+
+  beam.Width0 = espThickness
+  beam.Width1 = 0.2
+  beam.Transparency = NumberSequence.new(espTransparency)
+  beam.FaceCamera = true
   beam.Parent = workspace
 
+  -- Animation du tracer si activée
+  if espAnimation then
+    local connection = RunService.Heartbeat:Connect(function()
+      if beam and beam.Parent then
+        local time = tick()
+        local wave = (math.sin(time * 5) + 1) / 2
+        beam.Width0 = espThickness + (wave * 1)
+      else
+        connection:Disconnect()
+      end
+    end)
+    espObjects[targetPlayer.Name .. "_tracer_animation"] = connection
+  end
+
   espObjects[targetPlayer.Name .. "_tracer"] = {beam, attachment0, attachment1}
+end
+
+local function createPlayerBox(targetPlayer)
+  if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+
+  local character = targetPlayer.Character
+  local rootPart = character.HumanoidRootPart
+
+  -- Créer une boîte 3D autour du joueur (taille réduite)
+  local boxGui = Instance.new("BillboardGui")
+  boxGui.Size = UDim2.new(4, 0, 6, 0)
+  boxGui.StudsOffset = Vector3.new(0, 0, 0)
+  boxGui.Parent = rootPart
+
+  local boxFrame = Instance.new("Frame")
+  boxFrame.Size = UDim2.new(1, 0, 1, 0)
+  boxFrame.BackgroundTransparency = 1
+  boxFrame.BorderSizePixel = espThickness
+  boxFrame.BorderColor3 = espColor
+  boxFrame.Parent = boxGui
+
+  local boxCorner = Instance.new("UICorner")
+  boxCorner.CornerRadius = UDim.new(0, 4)
+  boxCorner.Parent = boxFrame
+
+  espObjects[targetPlayer.Name .. "_box"] = boxGui
+end
+
+local function createPlayerHealthBar(targetPlayer)
+  if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then return end
+
+  local character = targetPlayer.Character
+  local humanoid = character.Humanoid
+  local rootPart = character:FindFirstChild("HumanoidRootPart")
+  if not rootPart then return end
+
+  -- Créer la barre de vie (taille réduite)
+  local healthGui = Instance.new("BillboardGui")
+  healthGui.Size = UDim2.new(0, 60, 0, 12)
+  healthGui.StudsOffset = Vector3.new(0, 3, 0)
+  healthGui.Parent = rootPart
+
+  -- Background de la barre
+  local healthBg = Instance.new("Frame")
+  healthBg.Size = UDim2.new(1, 0, 1, 0)
+  healthBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+  healthBg.BorderSizePixel = 1
+  healthBg.BorderColor3 = Color3.fromRGB(255, 255, 255)
+  healthBg.Parent = healthGui
+
+  local healthBgCorner = Instance.new("UICorner")
+  healthBgCorner.CornerRadius = UDim.new(0, 2)
+  healthBgCorner.Parent = healthBg
+
+  -- Barre de vie colorée
+  local healthBar = Instance.new("Frame")
+  healthBar.Size = UDim2.new(humanoid.Health / humanoid.MaxHealth, 0, 0.8, 0)
+  healthBar.Position = UDim2.new(0, 0, 0.1, 0)
+  healthBar.BorderSizePixel = 0
+  healthBar.Parent = healthBg
+
+  local healthBarCorner = Instance.new("UICorner")
+  healthBarCorner.CornerRadius = UDim.new(0, 2)
+  healthBarCorner.Parent = healthBar
+
+  -- Texte de vie
+  local healthText = Instance.new("TextLabel")
+  healthText.Size = UDim2.new(1, 0, 1, 0)
+  healthText.BackgroundTransparency = 1
+  healthText.Text = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+  healthText.TextColor3 = Color3.fromRGB(255, 255, 255)
+  healthText.TextStrokeTransparency = 0
+  healthText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+  healthText.TextScaled = true
+  healthText.Font = Enum.Font.GothamBold
+  healthText.Parent = healthBg
+
+  -- Mise à jour en temps réel
+  local healthConnection = RunService.Heartbeat:Connect(function()
+    if humanoid and humanoid.Parent and healthBar and healthBar.Parent then
+      local healthPercent = humanoid.Health / humanoid.MaxHealth
+      healthBar.Size = UDim2.new(healthPercent, 0, 0.8, 0)
+
+      -- Couleur dynamique selon la vie
+      if healthPercent > 0.6 then
+        healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0) -- Vert
+      elseif healthPercent > 0.3 then
+        healthBar.BackgroundColor3 = Color3.fromRGB(255, 255, 0) -- Jaune
+      else
+        healthBar.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Rouge
+      end
+
+      healthText.Text = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+    else
+      healthConnection:Disconnect()
+    end
+  end)
+
+  espObjects[targetPlayer.Name .. "_health"] = healthGui
+  espObjects[targetPlayer.Name .. "_health_connection"] = healthConnection
 end
 
 local function createPlayerNametag(targetPlayer)
@@ -1214,36 +1658,48 @@ local function createPlayerNametag(targetPlayer)
 
   local head = targetPlayer.Character.Head
 
-  -- Créer le BillboardGui pour le nametag
+  -- Créer le BillboardGui amélioré pour le nametag (taille réduite)
   local billboard = Instance.new("BillboardGui")
-  billboard.Size = UDim2.new(0, 200, 0, 50)
-  billboard.StudsOffset = Vector3.new(0, 3, 0)
+  billboard.Size = UDim2.new(0, 150, 0, 50)
+  billboard.StudsOffset = Vector3.new(0, 2.5, 0)
   billboard.Parent = head
 
-  -- Nom du joueur
+  -- Background stylé
+  local bgFrame = Instance.new("Frame")
+  bgFrame.Size = UDim2.new(1, 0, 1, 0)
+  bgFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+  bgFrame.BackgroundTransparency = 0.3
+  bgFrame.BorderSizePixel = 0
+  bgFrame.Parent = billboard
+
+  local bgCorner = Instance.new("UICorner")
+  bgCorner.CornerRadius = UDim.new(0, 4)
+  bgCorner.Parent = bgFrame
+
+  -- Nom du joueur amélioré
   local nameLabel = Instance.new("TextLabel")
-  nameLabel.Size = UDim2.new(1, 0, 0.6, 0)
-  nameLabel.Position = UDim2.new(0, 0, 0, 0)
+  nameLabel.Size = UDim2.new(1, -10, 0.5, 0)
+  nameLabel.Position = UDim2.new(0, 5, 0, 0)
   nameLabel.BackgroundTransparency = 1
-  nameLabel.Text = targetPlayer.DisplayName .. " (@" .. targetPlayer.Name .. ")"
-  nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+  nameLabel.Text = "👤 " .. targetPlayer.DisplayName .. " (@" .. targetPlayer.Name .. ")"
+  nameLabel.TextColor3 = espColor
   nameLabel.TextStrokeTransparency = 0
   nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
   nameLabel.TextScaled = true
   nameLabel.Font = Enum.Font.GothamBold
-  nameLabel.Parent = billboard
+  nameLabel.Parent = bgFrame
 
-  -- Distance (si activée)
+  -- Distance avec icône
   local distanceLabel = Instance.new("TextLabel")
-  distanceLabel.Size = UDim2.new(1, 0, 0.4, 0)
-  distanceLabel.Position = UDim2.new(0, 0, 0.6, 0)
+  distanceLabel.Size = UDim2.new(1, -10, 0.5, 0)
+  distanceLabel.Position = UDim2.new(0, 5, 0.5, 0)
   distanceLabel.BackgroundTransparency = 1
-  distanceLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+  distanceLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
   distanceLabel.TextStrokeTransparency = 0
   distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
   distanceLabel.TextScaled = true
   distanceLabel.Font = Enum.Font.Gotham
-  distanceLabel.Parent = billboard
+  distanceLabel.Parent = bgFrame
 
   espObjects[targetPlayer.Name .. "_nametag"] = billboard
   espObjects[targetPlayer.Name .. "_distance"] = distanceLabel
@@ -1257,7 +1713,18 @@ local function updatePlayerDistance(targetPlayer)
   local distanceLabel = espObjects[targetPlayer.Name .. "_distance"]
   if distanceLabel then
     local distance = (targetPlayer.Character.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
-    distanceLabel.Text = math.floor(distance) .. " studs"
+    local distanceText = "📏 " .. math.floor(distance) .. " studs"
+
+    -- Changer la couleur selon la distance
+    if distance < 50 then
+      distanceLabel.TextColor3 = Color3.fromRGB(255, 100, 100) -- Rouge proche
+    elseif distance < 150 then
+      distanceLabel.TextColor3 = Color3.fromRGB(255, 255, 100) -- Jaune moyen
+    else
+      distanceLabel.TextColor3 = Color3.fromRGB(100, 255, 100) -- Vert loin
+    end
+
+    distanceLabel.Text = distanceText
   end
 end
 
@@ -1275,51 +1742,176 @@ local function createESPForPlayer(targetPlayer)
   if isNametagsEnabled then
     createPlayerNametag(targetPlayer)
   end
+
+  if espBoxes then
+    createPlayerBox(targetPlayer)
+  end
+
+  if espHealthBar then
+    createPlayerHealthBar(targetPlayer)
+  end
 end
 
 local function removeESPForPlayer(targetPlayer)
   -- Supprimer highlight
   local highlight = espObjects[targetPlayer.Name .. "_highlight"]
   if highlight then
-    highlight:Destroy()
+    pcall(function() highlight:Destroy() end)
     espObjects[targetPlayer.Name .. "_highlight"] = nil
+  end
+
+  -- Supprimer animation highlight
+  local highlightAnim = espObjects[targetPlayer.Name .. "_highlight_animation"]
+  if highlightAnim then
+    pcall(function() highlightAnim:Disconnect() end)
+    espObjects[targetPlayer.Name .. "_highlight_animation"] = nil
   end
 
   -- Supprimer tracer
   local tracer = espObjects[targetPlayer.Name .. "_tracer"]
   if tracer then
     for _, obj in pairs(tracer) do
-      if obj and obj.Parent then
-        obj:Destroy()
-      end
+      pcall(function() 
+        if obj and obj.Parent then
+          obj:Destroy()
+        end
+      end)
     end
     espObjects[targetPlayer.Name .. "_tracer"] = nil
+  end
+
+  -- Supprimer animation tracer
+  local tracerAnim = espObjects[targetPlayer.Name .. "_tracer_animation"]
+  if tracerAnim then
+    pcall(function() tracerAnim:Disconnect() end)
+    espObjects[targetPlayer.Name .. "_tracer_animation"] = nil
   end
 
   -- Supprimer nametag
   local nametag = espObjects[targetPlayer.Name .. "_nametag"]
   if nametag then
-    nametag:Destroy()
+    pcall(function() nametag:Destroy() end)
     espObjects[targetPlayer.Name .. "_nametag"] = nil
     espObjects[targetPlayer.Name .. "_distance"] = nil
   end
+
+  -- Supprimer boîte
+  local box = espObjects[targetPlayer.Name .. "_box"]
+  if box then
+    pcall(function() box:Destroy() end)
+    espObjects[targetPlayer.Name .. "_box"] = nil
+  end
+
+  -- Supprimer barre de vie
+  local health = espObjects[targetPlayer.Name .. "_health"]
+  if health then
+    pcall(function() health:Destroy() end)
+    espObjects[targetPlayer.Name .. "_health"] = nil
+  end
+
+  local healthConnection = espObjects[targetPlayer.Name .. "_health_connection"]
+  if healthConnection then
+    pcall(function() healthConnection:Disconnect() end)
+    espObjects[targetPlayer.Name .. "_health_connection"] = nil
+  end
+end
+
+-- Fonction de nettoyage ESP ultra renforcée
+local function cleanupAllESP()
+  print("🧹 Nettoyage ESP complet en cours...")
+
+  -- 1. Arrêter toutes les connexions d'abord
+  for connectionName, connection in pairs(espConnections) do
+    pcall(function()
+      if connection and connection.Connected then
+        connection:Disconnect()
+      end
+    end)
+    espConnections[connectionName] = nil
+  end
+
+  -- 2. Supprimer tous les objets ESP connus
+  for objectName, object in pairs(espObjects) do
+    pcall(function()
+      if typeof(object) == "table" then
+        for _, obj in pairs(object) do
+          if obj and obj.Parent then
+            obj:Destroy()
+          end
+        end
+      elseif object and object.Parent then
+        object:Destroy()
+      end
+    end)
+    espObjects[objectName] = nil
+  end
+
+  -- 3. Recherche et destruction en profondeur dans tout le workspace
+  pcall(function()
+    for _, obj in pairs(workspace:GetDescendants()) do
+      if obj:IsA("Highlight") then
+        obj:Destroy()
+      elseif obj:IsA("Beam") then  
+        -- Vérifier si c'est un beam ESP (pas les beams du jeu)
+        if obj.Parent == workspace or (obj.Attachment0 and obj.Attachment1) then
+          obj:Destroy()
+        end
+      elseif obj:IsA("Attachment") then
+        -- Supprimer les attachments orphelins
+        if obj.Name == "" and obj.Parent and obj.Parent.Name == "HumanoidRootPart" then
+          obj:Destroy()
+        end
+      end
+    end
+  end)
+
+  -- 4. Nettoyage des BillboardGuis dans tous les personnages
+  pcall(function()
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+      if targetPlayer.Character then
+        local head = targetPlayer.Character:FindFirstChild("Head")
+        if head then
+          for _, gui in pairs(head:GetChildren()) do
+            if gui:IsA("BillboardGui") then
+              gui:Destroy()
+            end
+          end
+        end
+      end
+    end
+  end)
+
+  -- 5. Vider complètement les tables
+  espObjects = {}
+  espConnections = {}
+
+  print("✅ ESP complètement nettoyé!")
 end
 
 local function toggleESP()
   if isEspEnabled then
     -- Activer ESP
+    print("🔍 Activation ESP...")
+
     for _, targetPlayer in pairs(Players:GetPlayers()) do
       createESPForPlayer(targetPlayer)
     end
 
     -- Connexion pour nouveaux joueurs
     espConnections.playerAdded = Players.PlayerAdded:Connect(function(targetPlayer)
-      targetPlayer.CharacterAdded:Connect(function()
+      if targetPlayer.Character then
         task.wait(1)
         if isEspEnabled then
           createESPForPlayer(targetPlayer)
         end
-      end)
+      else
+        targetPlayer.CharacterAdded:Connect(function()
+          task.wait(1)
+          if isEspEnabled then
+            createESPForPlayer(targetPlayer)
+          end
+        end)
+      end
     end)
 
     -- Connexion pour joueurs qui partent
@@ -1329,6 +1921,8 @@ local function toggleESP()
 
     -- Mise à jour continue des tracers et distances
     espConnections.update = RunService.Heartbeat:Connect(function()
+      if not isEspEnabled then return end -- Double vérification
+
       for _, targetPlayer in pairs(Players:GetPlayers()) do
         if targetPlayer ~= player and targetPlayer.Character then
           -- Mettre à jour les tracers
@@ -1345,61 +1939,256 @@ local function toggleESP()
       end
     end)
 
-    print("ESP activé - Highlighting, tracers et nametags activés!")
+    print("✅ ESP activé - Highlighting, tracers et nametags activés!")
   else
-    -- Désactiver ESP
-    for _, targetPlayer in pairs(Players:GetPlayers()) do
-      removeESPForPlayer(targetPlayer)
-    end
-
-    -- Déconnecter tous les événements
-    for _, connection in pairs(espConnections) do
-      if connection then
-        connection:Disconnect()
-      end
-    end
-    espConnections = {}
-
-    print("ESP désactivé!")
+    -- Désactiver ESP avec nettoyage renforcé
+    print("❌ Désactivation ESP...")
+    cleanupAllESP()
   end
 end
 
--- Fonction pour se téléporter sur tous les joueurs actifs
-local function toggleTpToPlayers()
-  if isTpToPlayersEnabled then
-    tpToPlayersConnection = task.spawn(function()
-      while isTpToPlayersEnabled do
-        local char = player.Character
-        if char then
-          local root = char:FindFirstChild("HumanoidRootPart")
-          if root then
-            -- Trouver tous les joueurs actifs
-            local players = {}
-            for _, targetPlayer in pairs(Players:GetPlayers()) do
-              if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                table.insert(players, targetPlayer)
-              end
-            end
+-- Fonction pour mettre à jour la liste des joueurs
+local function updatePlayerList()
+  if not playerListDropdown then return end
 
-            if #players > 0 then
-              local randomPlayer = players[math.random(1, #players)]
-              if randomPlayer and randomPlayer.Character then
-                local targetRoot = randomPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if targetRoot then
-                  root.CFrame = targetRoot.CFrame + Vector3.new(math.random(-5, 5), 0, math.random(-5, 5))
-                end
-              end
-            end
-          end
-        end
-        task.wait(2) -- Téléportation toutes les 2 secondes
+  local playerNames = {}
+  for _, targetPlayer in pairs(Players:GetPlayers()) do
+    if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+      -- S'assurer que le nom est une string valide
+      local playerName = tostring(targetPlayer.Name or "")
+      if playerName ~= "" and playerName ~= "nil" then
+        table.insert(playerNames, playerName)
+      end
+    end
+  end
+
+  if #playerNames == 0 then
+    table.insert(playerNames, "Aucun joueur disponible")
+  end
+
+  -- Vérifier que tous les éléments sont des strings
+  for i, name in ipairs(playerNames) do
+    playerNames[i] = tostring(name)
+  end
+
+  -- Mettre à jour le dropdown avec une approche plus sûre
+  pcall(function()
+    playerListDropdown:Refresh(playerNames, true)
+  end)
+
+  print("Liste des joueurs mise à jour: " .. #playerNames .. " joueurs trouvés")
+end
+
+-- Fonction pour se téléporter sur un joueur spécifique
+local function teleportToSelectedPlayer()
+  -- Nettoyer et valider le nom du joueur sélectionné
+  local playerName = tostring(selectedPlayerName or "")
+
+  if playerName == "" or playerName == "nil" or playerName == "Aucun joueur disponible" then
+    print("Aucun joueur sélectionné ou nom invalide!")
+    print("Nom reçu: '" .. playerName .. "'")
+    return
+  end
+
+  local targetPlayer = Players:FindFirstChild(playerName)
+  if not targetPlayer then
+    print("Joueur '" .. playerName .. "' introuvable!")
+    print("Joueurs disponibles:")
+    for _, p in pairs(Players:GetPlayers()) do
+      if p ~= player then
+        print("- " .. p.Name)
+      end
+    end
+    return
+  end
+
+  if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+    print("Personnage du joueur " .. tostring(selectedPlayerName) .. " introuvable!")
+    return
+  end
+
+  local char = player.Character
+  if not char or not char:FindFirstChild("HumanoidRootPart") then
+    print("Votre personnage est introuvable!")
+    return
+  end
+
+  local myRoot = char.HumanoidRootPart
+  local targetRoot = targetPlayer.Character.HumanoidRootPart
+
+  -- Créer l'effet de flou avec vérification
+  local screenGui, blurEffect
+  pcall(function()
+    screenGui, blurEffect = createBlurEffect()
+  end)
+
+  -- Téléportation avec méthodes multiples
+  print("🔄 Tentative de téléportation...")
+
+  -- Méthode 1: CFrame direct
+  local originalPos = myRoot.Position
+  myRoot.CFrame = targetRoot.CFrame
+
+  -- Vérifier si la téléportation a fonctionné
+  task.wait(0.1)
+  local newPos = myRoot.Position
+  local distance = (newPos - targetRoot.Position).Magnitude
+
+  print("Distance après TP CFrame:", distance, "studs")
+
+  if distance > 10 then
+    print("⚠️ CFrame a échoué, essai avec Position...")
+    -- Méthode 2: Position directe
+    myRoot.Position = targetRoot.Position
+    task.wait(0.1)
+    distance = (myRoot.Position - targetRoot.Position).Magnitude
+    print("Distance après TP Position:", distance, "studs")
+  end
+
+  if distance > 10 then
+    print("⚠️ Position a échoué, essai avec Tween...")
+    -- Méthode 3: Tween
+    local tween = TweenService:Create(
+      myRoot,
+      TweenInfo.new(0.2, Enum.EasingStyle.Quad),
+      {CFrame = targetRoot.CFrame}
+    )
+    tween:Play()
+    tween.Completed:Wait()
+    distance = (myRoot.Position - targetRoot.Position).Magnitude
+    print("Distance après Tween:", distance, "studs")
+  end
+
+  if distance <= 10 then
+    print("✅ Téléportation réussie sur " .. targetPlayer.Name .. "!")
+  else
+    print("❌ Téléportation échouée - distance finale:", distance, "studs")
+    print("Position finale:", myRoot.Position)
+    print("Position cible:", targetRoot.Position)
+  end
+
+  print("=== FIN DEBUG ===")
+
+  -- Supprimer l'effet de flou après un délai
+  task.spawn(function()
+    task.wait(0.5)
+    pcall(function()
+      removeBlurEffect(screenGui, blurEffect)
+    end)
+  end)
+end
+
+
+
+-- Fonction pour trouver le joueur le plus proche
+local function findClosestPlayer()
+  local char = player.Character
+  if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
+
+  local myRoot = char.HumanoidRootPart
+  local closestPlayer = nil
+  local closestDistance = math.huge
+
+  for _, targetPlayer in pairs(Players:GetPlayers()) do
+    if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+      local targetRoot = targetPlayer.Character.HumanoidRootPart
+      local distance = (myRoot.Position - targetRoot.Position).Magnitude
+
+      if distance < closestDistance then
+        closestDistance = distance
+        closestPlayer = targetPlayer
+      end
+    end
+  end
+
+  return closestPlayer
+end
+
+-- Fonction pour mettre à jour la liste des joueurs pour le stalker
+local function updateStalkerPlayerList()
+  if not stalkerPlayerDropdown then return end
+
+  local playerNames = {}
+  for _, targetPlayer in pairs(Players:GetPlayers()) do
+    if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+      local playerName = tostring(targetPlayer.Name or "")
+      if playerName ~= "" and playerName ~= "nil" then
+        table.insert(playerNames, playerName)
+      end
+    end
+  end
+
+  if #playerNames == 0 then
+    table.insert(playerNames, "Aucun joueur disponible")
+  end
+
+  pcall(function()
+    stalkerPlayerDropdown:Refresh(playerNames, true)
+  end)
+
+  print("Liste stalker mise à jour: " .. #playerNames .. " joueurs disponibles")
+end
+
+-- Fonction pour le stalker troll (suit le joueur sélectionné)
+local function toggleStalker()
+  if isStalkerEnabled then
+    stalkerConnection = RunService.Heartbeat:Connect(function()
+      local char = player.Character
+      if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+      local myRoot = char.HumanoidRootPart
+
+      -- Vérifier si un joueur est sélectionné
+      if not selectedStalkerTarget or selectedStalkerTarget == "" or selectedStalkerTarget == "Aucun joueur disponible" then
+        return -- Ne rien faire si aucun joueur n'est sélectionné
+      end
+
+      -- Trouver le joueur ciblé
+      local targetPlayer = Players:FindFirstChild(selectedStalkerTarget)
+      if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return -- Joueur introuvable ou sans personnage
+      end
+
+      local targetRoot = targetPlayer.Character.HumanoidRootPart
+      local targetLookVector = targetRoot.CFrame.LookVector
+
+      -- Position derrière le joueur avec mouvement d'avant-arrière (vitesse configurable)
+      local time = tick()
+      local speedMultiplier = stalkerSpeed
+      local wobble = math.sin(time * (8 * speedMultiplier)) * (2 * speedMultiplier) -- Mouvement d'avant-arrière avec vitesse
+      local behindOffset = -targetLookVector * (stalkerDistance + wobble)
+      local finalPosition = targetRoot.Position + behindOffset
+
+      -- Se téléporter derrière avec un petit mouvement vertical (vitesse configurable)
+      local verticalOffset = math.sin(time * (6 * speedMultiplier)) * (0.5 * speedMultiplier)
+      myRoot.CFrame = CFrame.lookAt(
+        finalPosition + Vector3.new(0, verticalOffset, 0),
+        targetRoot.Position
+      )
+
+      -- Optionnel: faire du bruit/mouvement supplémentaire (fréquence basée sur la vitesse)
+      local randomChance = math.max(1, math.floor(60 / speedMultiplier)) -- Plus rapide = plus de mouvements
+      if math.random(1, randomChance) == 1 then
+        local randomOffset = Vector3.new(
+          math.random(-2, 2) * speedMultiplier,
+          math.random(-1, 1) * speedMultiplier,
+          math.random(-2, 2) * speedMultiplier
+        )
+        myRoot.CFrame = myRoot.CFrame + randomOffset
       end
     end)
-  else
-    if tpToPlayersConnection then
-      task.cancel(tpToPlayersConnection)
-      tpToPlayersConnection = nil
+
+    if selectedStalkerTarget and selectedStalkerTarget ~= "" and selectedStalkerTarget ~= "Aucun joueur disponible" then
+      print("🎯 Oh ouiiiiii je kiff activé! Suit le joueur: " .. selectedStalkerTarget)
+    else
+      print("🎯 Oh ouiiiiii je kiff activé! Sélectionnez un joueur dans la liste.")
     end
+  else
+    if stalkerConnection then
+      stalkerConnection:Disconnect()
+      stalkerConnection = nil
+    end
+    print("Oh ouiiiiii je kiff désactivé!")
   end
 end
 
@@ -1450,139 +2239,7 @@ local function toggleSlowSpin()
   end
 end
 
--- Fonction pour screen shake (secouer l'écran)
-local function toggleScreenShake()
-  if isScreenShakeEnabled then
-    local camera = workspace.CurrentCamera
-    screenShakeConnection = RunService.Heartbeat:Connect(function()
-      if camera then
-        local shakeIntensity = 2
-        local randomX = (math.random() - 0.5) * shakeIntensity
-        local randomY = (math.random() - 0.5) * shakeIntensity
-        local randomZ = (math.random() - 0.5) * shakeIntensity
-        
-        camera.CFrame = camera.CFrame * CFrame.new(randomX, randomY, randomZ)
-      end
-    end)
-    print("Screen shake activé!")
-  else
-    if screenShakeConnection then
-      screenShakeConnection:Disconnect()
-      screenShakeConnection = nil
-    end
-    print("Screen shake désactivé!")
-  end
-end
 
--- Fonction pour spam de saut
-local function toggleJumpSpam()
-  if isJumpSpamEnabled then
-    jumpSpamConnection = task.spawn(function()
-      while isJumpSpamEnabled do
-        local char = player.Character
-        if char then
-          local humanoid = char:FindFirstChildOfClass("Humanoid")
-          if humanoid then
-            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-          end
-        end
-        task.wait(0.1) -- Saut toutes les 0.1 secondes
-      end
-    end)
-    print("Jump spam activé!")
-  else
-    if jumpSpamConnection then
-      task.cancel(jumpSpamConnection)
-      jumpSpamConnection = nil
-    end
-    print("Jump spam désactivé!")
-  end
-end
-
--- Fonction pour chat spam
-local function toggleChatSpam()
-  if isChatSpamEnabled then
-    local messages = {
-      "TROLL MODE ACTIVATED! 🔥",
-      "Script by Pro Hacker 💀",
-      "Get rekt! 😈",
-      "Ez Ez Ez 🎮",
-      "Skill issue? 🤔",
-      "Too easy! 💪",
-      "GG EZ CLAP 👏",
-      "Noob detected! 🤡"
-    }
-    
-    chatSpamConnection = task.spawn(function()
-      while isChatSpamEnabled do
-        local randomMessage = messages[math.random(1, #messages)]
-        pcall(function()
-          game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.SayMessageRequest:FireServer(randomMessage, "All")
-        end)
-        task.wait(3) -- Message toutes les 3 secondes
-      end
-    end)
-    print("Chat spam activé!")
-  else
-    if chatSpamConnection then
-      task.cancel(chatSpamConnection)
-      chatSpamConnection = nil
-    end
-    print("Chat spam désactivé!")
-  end
-end
-
--- Fonction pour lag bomb (créer du lag)
-local function toggleLagBomb()
-  if isLagBombEnabled then
-    lagBombConnection = task.spawn(function()
-      while isLagBombEnabled do
-        -- Créer plusieurs parties invisibles pour lag
-        for i = 1, 20 do
-          local part = Instance.new("Part")
-          part.Parent = workspace
-          part.Anchored = true
-          part.CanCollide = false
-          part.Transparency = 1
-          part.Size = Vector3.new(0.1, 0.1, 0.1)
-          part.Position = Vector3.new(math.random(-100, 100), math.random(0, 100), math.random(-100, 100))
-          
-          -- Supprimer après 1 seconde
-          game:GetService("Debris"):AddItem(part, 1)
-        end
-        task.wait(0.5)
-      end
-    end)
-    print("Lag bomb activé! (Attention: peut affecter vos performances)")
-  else
-    if lagBombConnection then
-      task.cancel(lagBombConnection)
-      lagBombConnection = nil
-    end
-    print("Lag bomb désactivé!")
-  end
-end
-
--- Fonction pour flip camera
-local function toggleCameraFlip()
-  if isCameraFlipEnabled then
-    local camera = workspace.CurrentCamera
-    cameraFlipConnection = RunService.Heartbeat:Connect(function()
-      if camera then
-        -- Rotation aléatoire de la caméra
-        local randomRoll = math.sin(tick() * 5) * 45 -- Oscillation entre -45 et 45 degrés
-        camera.CFrame = camera.CFrame * CFrame.Angles(0, 0, math.rad(randomRoll))
-      end
-    end)
-    print("Camera flip activé!")
-  else
-    if cameraFlipConnection then
-      cameraFlipConnection:Disconnect()
-      cameraFlipConnection = nil
-    end
-    print("Camera flip désactivé!")
-  end
-end
 
 -- Interface Rayfield
 local Window = Rayfield:CreateWindow({
@@ -1644,6 +2301,103 @@ local TeleportButton = TeleportTab:CreateButton({
    end,
 })
 
+-- Section Sauvegarde de Positions
+local PositionSection = TeleportTab:CreateSection("Sauvegarde de Positions")
+
+local SavePositionInput = TeleportTab:CreateInput({
+   Name = "Nom de la position à sauvegarder",
+   PlaceholderText = "Ex: MonSpawn, CacheSecrète...",
+   RemoveTextAfterFocusLost = false,
+   Callback = function(Text)
+      currentSavedPositionName = Text
+   end,
+})
+
+local SavePositionButton = TeleportTab:CreateButton({
+   Name = "💾 Sauvegarder position actuelle",
+   Callback = function()
+      if currentSavedPositionName == "" then
+         print("❌ Veuillez entrer un nom pour la position!")
+         return
+      end
+
+      local success = saveCurrentPosition(currentSavedPositionName)
+      if success then
+         print("✅ Position '" .. currentSavedPositionName .. "' sauvegardée!")
+         SavePositionInput:Set("") -- Vider le champ
+         currentSavedPositionName = ""
+         -- Mettre à jour la dropdown
+         updateSavedPositionsDropdown()
+      else
+         print("❌ Erreur lors de la sauvegarde!")
+      end
+   end,
+})
+
+-- Dropdown pour sélectionner une position sauvegardée
+savedPositionsDropdown = TeleportTab:CreateDropdown({
+   Name = "🗺️ Positions sauvegardées",
+   Options = {"Aucune position sauvegardée"},
+   CurrentOption = {"Aucune position sauvegardée"},
+   MultipleOptions = false,
+   Flag = "SavedPositionsDropdown",
+   Callback = function(Option)
+      if Option[1] and Option[1] ~= "Aucune position sauvegardée" then
+         selectedSavedPosition = Option[1]
+         print("Position sélectionnée: " .. selectedSavedPosition)
+      end
+   end,
+})
+
+local TeleportToSavedButton = TeleportTab:CreateButton({
+   Name = "🚀 Se téléporter à la position sauvegardée",
+   Callback = function()
+      if not selectedSavedPosition or selectedSavedPosition == "Aucune position sauvegardée" then
+         print("❌ Aucune position sélectionnée!")
+         return
+      end
+
+      local success = teleportToSavedPosition(selectedSavedPosition)
+      if success then
+         print("✅ Téléporté à: " .. selectedSavedPosition)
+      else
+         print("❌ Échec de la téléportation!")
+      end
+   end,
+})
+
+local DeleteSavedButton = TeleportTab:CreateButton({
+   Name = "🗑️ Supprimer position sélectionnée",
+   Callback = function()
+      if not selectedSavedPosition or selectedSavedPosition == "Aucune position sauvegardée" then
+         print("❌ Aucune position sélectionnée!")
+         return
+      end
+
+      pcall(function()
+         savedPositions[selectedSavedPosition] = nil
+         print("✅ Position '" .. selectedSavedPosition .. "' supprimée!")
+         selectedSavedPosition = ""
+         updateSavedPositionsDropdown()
+      end)
+   end,
+})
+
+local ClearAllSavedButton = TeleportTab:CreateButton({
+   Name = "💥 Supprimer TOUTES les positions",
+   Callback = function()
+      savedPositions = {}
+      selectedSavedPosition = ""
+      updateSavedPositionsDropdown()
+      print("🧹 Toutes les positions sauvegardées ont été supprimées!")
+   end,
+})
+
+local PositionInfo = TeleportTab:CreateParagraph({
+   Title = "📍 Système de Sauvegarde",
+   Content = "💾 SAUVEGARDE: Entrez un nom et cliquez sur sauvegarder\n🗺️ TÉLÉPORTATION: Sélectionnez une position et téléportez-vous\n🗑️ SUPPRESSION: Supprimez une position ou toutes\n\n✨ Vos positions sont sauvegardées pour toute la session!"
+})
+
 local VoidThresholdSlider = TeleportTab:CreateSlider({
    Name = "Seuil anti-void (position Y)",
    Range = {-1000, 0},
@@ -1668,16 +2422,20 @@ local AntiVoidToggle = TeleportTab:CreateToggle({
 })
 
 local AntiVoidInfo = TeleportTab:CreateParagraph({
-   Title = "Info Anti-void",
-   Content = "L'anti-void détecte quand vous tombez sous la map (en dessous du seuil Y) et vous téléporte automatiquement au spawn ou en sécurité."
+   Title = "🛡️ Anti-void AMÉLIORÉ",
+   Content = "🔥 SYSTÈME AVANCÉ DE PROTECTION 🔥\n\n💾 SAUVEGARDE INTELLIGENTE: Enregistre automatiquement vos positions sûres toutes les 0.5 secondes\n🚀 TÉLÉPORTATION PRIORITAIRE: Vous ramène à votre dernière position sûre plutôt qu'au spawn\n🎯 DÉTECTION PRÉCISE: Surveille en permanence votre altitude\n⚡ STABILISATION AUTO: Annule toute vélocité de chute et stabilise votre personnage\n\n📍 Positions de secours (par ordre de priorité):\n1️⃣ Dernière position sûre enregistrée\n2️⃣ Point de spawn du jeu\n3️⃣ Position de secours au centre (hauteur sûre)\n\n🛡️ Protection garantie contre toutes les chutes dans le vide!"
 })
+
+
 
 -- Onglet Boost
 local BoostTab = Window:CreateTab("Boost", 4483362458)
 
+
+
 local SpeedSlider = BoostTab:CreateSlider({
    Name = "Vitesse de marche",
-   Range = {16, 200},
+   Range = {16, 1000},
    Increment = 1,
    Suffix = "studs/s",
    CurrentValue = 16,
@@ -1702,10 +2460,10 @@ local SpeedToggle = BoostTab:CreateToggle({
 
 local JumpSlider = BoostTab:CreateSlider({
    Name = "Puissance de saut",
-   Range = {50, 300},
-   Increment = 1,
+   Range = {50, 500},
+   Increment = 5,
    Suffix = "power",
-   CurrentValue = 50,
+   CurrentValue = 100,
    Flag = "JumpSlider",
    Callback = function(Value)
       jumpPowerBoost = Value
@@ -1726,28 +2484,43 @@ local JumpToggle = BoostTab:CreateToggle({
 })
 
 local infiniteJumpConnection = nil
+local isInfiniteJumpEnabled = false
+
+-- Fonction pour activer/désactiver le saut infini
+local function toggleInfiniteJump()
+  if isInfiniteJumpEnabled then
+    -- Activer le saut infini
+    if infiniteJumpConnection then
+      infiniteJumpConnection:Disconnect()
+    end
+
+    infiniteJumpConnection = UserInputService.JumpRequest:Connect(function()
+      local char = player.Character
+      if char and isInfiniteJumpEnabled then
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+          humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+      end
+    end)
+    print("🦘 Saut infini activé!")
+  else
+    -- Désactiver le saut infini
+    if infiniteJumpConnection then
+      infiniteJumpConnection:Disconnect()
+      infiniteJumpConnection = nil
+    end
+    print("❌ Saut infini désactivé!")
+  end
+end
 
 local InfiniteJumpToggle = BoostTab:CreateToggle({
    Name = "Saut infini",
    CurrentValue = false,
    Flag = "InfiniteJump",
    Callback = function(Value)
-      if Value then
-        infiniteJumpConnection = UserInputService.JumpRequest:Connect(function()
-          local char = player.Character
-          if char then
-            local humanoid = char:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-              humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
-          end
-        end)
-      else
-        if infiniteJumpConnection then
-          infiniteJumpConnection:Disconnect()
-          infiniteJumpConnection = nil
-        end
-      end
+      isInfiniteJumpEnabled = Value
+      toggleInfiniteJump()
    end,
 })
 
@@ -1761,22 +2534,14 @@ local NoClipToggle = BoostTab:CreateToggle({
    end,
 })
 
-local InvisibilityToggle = BoostTab:CreateToggle({
-   Name = "Invisibilité",
-   CurrentValue = false,
-   Flag = "InvisibilityToggle",
-   Callback = function(Value)
-      isInvisible = Value
-      toggleInvisibility()
-   end,
-})
+
 
 -- Onglet Fly
 local FlyTab = Window:CreateTab("Fly", 4483362458)
 
 local FlySpeedSlider = FlyTab:CreateSlider({
    Name = "Vitesse de vol",
-   Range = {10, 200},
+   Range = {10, 1000},
    Increment = 1,
    Suffix = "studs/s",
    CurrentValue = 50,
@@ -1796,16 +2561,31 @@ local FlyToggle = FlyTab:CreateToggle({
    end,
 })
 
+local FlyNoClipToggle = FlyTab:CreateToggle({
+   Name = "NoClip ULTRA (traverse vraiment tout)",
+   CurrentValue = false,
+   Flag = "FlyNoClipToggle",
+   Callback = function(Value)
+      isFlyNoClipEnabled = Value
+      toggleFlyNoClip()
+   end,
+})
+
 local FlyInfo = FlyTab:CreateParagraph({
    Title = "Contrôles de vol",
    Content = "PC: WASD - Déplacement (suit la caméra)\nEspace - Monter\nShift Gauche - Descendre\n\nMobile: Joystick tactile pour bouger\nBoutons ↑↓ pour monter/descendre"
+})
+
+local FlyNoClipInfo = FlyTab:CreateParagraph({
+   Title = "NoClip ULTRA",
+   Content = "⚡ SUPER NOCLIP POUR LE FLY ⚡\n\nCette option désactive COMPLÈTEMENT toutes les collisions pendant le vol.\n\nVous pourrez traverser:\n• Tous les murs\n• Tous les objets\n• Le terrain\n• Les barriers invisibles\n• Littéralement TOUT!\n\n⚠️ Fonctionne uniquement pendant le fly ⚠️"
 })
 
 -- Onglet ESP
 local ESPTab = Window:CreateTab("ESP", 4483362458)
 
 local ESPToggle = ESPTab:CreateToggle({
-   Name = "Activer ESP Master",
+   Name = "🔍 Activer ESP Master",
    CurrentValue = false,
    Flag = "ESPToggle",
    Callback = function(Value)
@@ -1814,14 +2594,15 @@ local ESPToggle = ESPTab:CreateToggle({
    end,
 })
 
+local ESPSection1 = ESPTab:CreateSection("Options ESP de Base")
+
 local HighlightToggle = ESPTab:CreateToggle({
-   Name = "Highlighting joueurs",
+   Name = "✨ Highlighting joueurs",
    CurrentValue = false,
    Flag = "HighlightToggle",
    Callback = function(Value)
       isHighlightEnabled = Value
       if isEspEnabled then
-        -- Recréer l'ESP pour appliquer les changements
         toggleESP()
         toggleESP()
       end
@@ -1829,7 +2610,7 @@ local HighlightToggle = ESPTab:CreateToggle({
 })
 
 local TracersToggle = ESPTab:CreateToggle({
-   Name = "Tracers (lignes vers joueurs)",
+   Name = "📏 Tracers (lignes vers joueurs)",
    CurrentValue = false,
    Flag = "TracersToggle",
    Callback = function(Value)
@@ -1842,7 +2623,7 @@ local TracersToggle = ESPTab:CreateToggle({
 })
 
 local NametagsToggle = ESPTab:CreateToggle({
-   Name = "Nametags 3D",
+   Name = "🏷️ Nametags 3D stylés",
    CurrentValue = false,
    Flag = "NametagsToggle",
    Callback = function(Value)
@@ -1854,12 +2635,98 @@ local NametagsToggle = ESPTab:CreateToggle({
    end,
 })
 
+local BoxesToggle = ESPTab:CreateToggle({
+   Name = "📦 Boîtes 3D autour joueurs",
+   CurrentValue = false,
+   Flag = "BoxesToggle",
+   Callback = function(Value)
+      espBoxes = Value
+      if isEspEnabled then
+        toggleESP()
+        toggleESP()
+      end
+   end,
+})
+
+local HealthBarToggle = ESPTab:CreateToggle({
+   Name = "❤️ Barres de vie en temps réel",
+   CurrentValue = false,
+   Flag = "HealthBarToggle",
+   Callback = function(Value)
+      espHealthBar = Value
+      if isEspEnabled then
+        toggleESP()
+        toggleESP()
+      end
+   end,
+})
+
 local DistanceToggle = ESPTab:CreateToggle({
-   Name = "Afficher distances",
+   Name = "📍 Afficher distances",
    CurrentValue = false,
    Flag = "DistanceToggle",
    Callback = function(Value)
       isDistanceEnabled = Value
+   end,
+})
+
+local ESPSection2 = ESPTab:CreateSection("Personnalisation Avancée")
+
+local ESPAnimationToggle = ESPTab:CreateToggle({
+   Name = "🌟 Animations ESP (effet pulsant)",
+   CurrentValue = false,
+   Flag = "ESPAnimationToggle",
+   Callback = function(Value)
+      espAnimation = Value
+      if isEspEnabled then
+        toggleESP()
+        toggleESP()
+      end
+   end,
+})
+
+local ESPGradientToggle = ESPTab:CreateToggle({
+   Name = "🌈 Tracers avec dégradé",
+   CurrentValue = false,
+   Flag = "ESPGradientToggle",
+   Callback = function(Value)
+      espGradient = Value
+      if isEspEnabled then
+        toggleESP()
+        toggleESP()
+      end
+   end,
+})
+
+local ESPThicknessSlider = ESPTab:CreateSlider({
+   Name = "Épaisseur des lignes",
+   Range = {0.5, 10},
+   Increment = 0.5,
+   Suffix = "px",
+   CurrentValue = 2,
+   Flag = "ESPThicknessSlider",
+   Callback = function(Value)
+      espThickness = Value
+      if isEspEnabled then
+        toggleESP()
+        toggleESP()
+      end
+   end,
+})
+
+local ESPTransparencySlider = ESPTab:CreateSlider({
+   Name = "Transparence ESP",
+   Range = {0, 0.9},
+   Increment = 0.1,
+   Suffix = "",
+   CurrentValue = 0.3,
+   Flag = "ESPTransparencySlider",
+   Callback = function(Value)
+      espTransparency = Value
+      if isEspEnabled then
+        toggleESP()
+        toggleESP()
+      end
    end,
 })
 
@@ -1876,13 +2743,12 @@ local TracerDistanceSlider = ESPTab:CreateSlider({
 })
 
 local ESPColorPicker = ESPTab:CreateColorPicker({
-   Name = "Couleur ESP",
+   Name = "🎨 Couleur ESP principale",
    Color = Color3.fromRGB(255, 0, 0),
    Flag = "ESPColorPicker",
    Callback = function(Value)
       espColor = Value
       if isEspEnabled then
-        -- Recréer l'ESP avec la nouvelle couleur
         toggleESP()
         toggleESP()
       end
@@ -1890,15 +2756,28 @@ local ESPColorPicker = ESPTab:CreateColorPicker({
 })
 
 local ESPInfo = ESPTab:CreateParagraph({
-   Title = "Informations ESP",
-   Content = "ESP Master: Active/désactive tout l'ESP.\n\nHighlighting: Contour coloré autour des joueurs.\n\nTracers: Lignes depuis vous vers les autres joueurs.\n\nNametags 3D: Affiche les noms au-dessus des joueurs.\n\nDistances: Affiche la distance en temps réel.\n\nPersonnalisez la couleur et la portée des tracers!"
+   Title = "🔥 ESP PREMIUM AMÉLIORÉ 🔥",
+   Content = "✨ NOUVELLES FONCTIONNALITÉS ✨\n\n📦 Boîtes 3D: Cadre stylé autour des joueurs\n❤️ Barres de vie: Affichage temps réel de la santé\n🌟 Animations: Effets pulsants et dynamiques\n🌈 Dégradés: Tracers avec couleurs fluides\n🎨 Personnalisation: Épaisseur, transparence, couleurs\n🏷️ Nametags stylés: Design moderne avec fond\n\n💡 Activez ESP Master puis choisissez vos options!"
 })
 
 -- Onglet Troll
 local TrollTab = Window:CreateTab("Troll", 4483362458)
 
+local SpinSpeedSlider = TrollTab:CreateSlider({
+   Name = "Vitesse de rotation ULTRA",
+   Range = {1000, 5000000},
+   Increment = 100000,
+   Suffix = "rad/s",
+   CurrentValue = 2000000,
+   Flag = "SpinSpeedSlider",
+   Callback = function(Value)
+      spinSpeed = Value
+      print("Vitesse spin: " .. Value .. " rad/s")
+   end,
+})
+
 local SpinAttackToggle = TrollTab:CreateToggle({
-   Name = "Spin Attack (Modéré)",
+   Name = "🌪️ SPIN ATTACK GLOBAL (Affecte TOUS les joueurs)",
    CurrentValue = false,
    Flag = "SpinAttackToggle",
    Callback = function(Value)
@@ -1907,102 +2786,93 @@ local SpinAttackToggle = TrollTab:CreateToggle({
    end,
 })
 
-local SlowSpinSpeedSlider = TrollTab:CreateSlider({
-   Name = "Vitesse rotation contrôlée",
-   Range = {50, 500},
-   Increment = 10,
-   Suffix = "rad/s",
-   CurrentValue = 157,
-   Flag = "SlowSpinSpeedSlider",
+local StalkerDistanceSlider = TrollTab:CreateSlider({
+   Name = "Distance stalker (derrière le joueur)",
+   Range = {1, 10},
+   Increment = 0.5,
+   Suffix = "studs",
+   CurrentValue = 3,
+   Flag = "StalkerDistanceSlider",
    Callback = function(Value)
-      slowSpinSpeed = Value
+      stalkerDistance = Value
+      print("Distance stalker: " .. Value .. " studs")
    end,
 })
 
-local SlowSpinToggle = TrollTab:CreateToggle({
-   Name = "Rotation Contrôlée (25 tours/sec)",
-   CurrentValue = false,
-   Flag = "SlowSpinToggle",
+local StalkerSpeedSlider = TrollTab:CreateSlider({
+   Name = "🚀 Vitesse du Oh ouiiiiii je kiff",
+   Range = {0.1, 5.0},
+   Increment = 0.1,
+   Suffix = "x",
+   CurrentValue = 1.0,
+   Flag = "StalkerSpeedSlider",
    Callback = function(Value)
-      isSlowSpinEnabled = Value
-      toggleSlowSpin()
+      stalkerSpeed = Value
+      print("Vitesse stalker: " .. Value .. "x")
    end,
 })
 
-local TpToPlayersToggle = TrollTab:CreateToggle({
-   Name = "TP sur joueurs actifs",
-   CurrentValue = false,
-   Flag = "TpToPlayersToggle",
-   Callback = function(Value)
-      isTpToPlayersEnabled = Value
-      toggleTpToPlayers()
+-- Dropdown pour sélectionner le joueur à stalker
+stalkerPlayerDropdown = TrollTab:CreateDropdown({
+   Name = "👤 Joueur à stalker",
+   Options = {"Aucun joueur disponible"},
+   CurrentOption = {"Aucun joueur disponible"},
+   MultipleOptions = false,
+   Flag = "StalkerPlayerDropdown",
+   Callback = function(Option)
+      if Option[1] and Option[1] ~= "Aucun joueur disponible" then
+         selectedStalkerTarget = Option[1]
+         print("Joueur stalker sélectionné: " .. selectedStalkerTarget)
+      else
+         selectedStalkerTarget = ""
+      end
    end,
 })
 
-local AntiFallToggle = TrollTab:CreateToggle({
-   Name = "Anti-Fall (rester debout)",
-   CurrentValue = false,
-   Flag = "AntiFallToggle",
-   Callback = function(Value)
-      isAntiFallEnabled = Value
-      toggleAntiFall()
+local UpdateStalkerListButton = TrollTab:CreateButton({
+   Name = "🔄 Mettre à jour liste des joueurs",
+   Callback = function()
+      updateStalkerPlayerList()
    end,
 })
 
-local ScreenShakeToggle = TrollTab:CreateToggle({
-   Name = "Screen Shake (secouer écran)",
+local StalkerToggle = TrollTab:CreateToggle({
+   Name = "🎯 Oh ouiiiiii je kiff (Suit le joueur sélectionné)",
    CurrentValue = false,
-   Flag = "ScreenShakeToggle",
+   Flag = "StalkerToggle",
    Callback = function(Value)
-      isScreenShakeEnabled = Value
-      toggleScreenShake()
+      isStalkerEnabled = Value
+      toggleStalker()
    end,
 })
 
-local JumpSpamToggle = TrollTab:CreateToggle({
-   Name = "Jump Spam",
-   CurrentValue = false,
-   Flag = "JumpSpamToggle",
-   Callback = function(Value)
-      isJumpSpamEnabled = Value
-      toggleJumpSpam()
-   end,
-})
-
-local ChatSpamToggle = TrollTab:CreateToggle({
-   Name = "Chat Spam",
-   CurrentValue = false,
-   Flag = "ChatSpamToggle",
-   Callback = function(Value)
-      isChatSpamEnabled = Value
-      toggleChatSpam()
-   end,
-})
-
-local CameraFlipToggle = TrollTab:CreateToggle({
-   Name = "Camera Flip (rotation cam)",
-   CurrentValue = false,
-   Flag = "CameraFlipToggle",
-   Callback = function(Value)
-      isCameraFlipEnabled = Value
-      toggleCameraFlip()
-   end,
-})
-
-local LagBombToggle = TrollTab:CreateToggle({
-   Name = "Lag Bomb ⚠️ (Dangereux)",
-   CurrentValue = false,
-   Flag = "LagBombToggle",
-   Callback = function(Value)
-      isLagBombEnabled = Value
-      toggleLagBomb()
-   end,
+local StalkerInfo = TrollTab:CreateParagraph({
+   Title = "🎯 OH OUIIIIII JE KIFF 🎯",
+   Content = "👤 OH OUIIIIII JE KIFF MODE ACTIVÉ!\n\n🎯 SÉLECTION MANUELLE: Choisissez le joueur à stalker dans la liste\n🔄 MISE À JOUR: Cliquez sur le bouton pour actualiser la liste\n🏃 Se téléporte derrière le joueur sélectionné en permanence\n↔️ Fait des mouvements d'avant-arrière dans le joueur\n🎭 Mouvement erratique pour maximiser l'agacement\n\n⚙️ CONTRÔLES:\n📏 Distance: Contrôle à quelle distance vous restez\n🚀 Vitesse: Contrôle la rapidité des mouvements (0.1x = très lent, 5x = très rapide)\n\n📝 INSTRUCTIONS:\n1️⃣ Mettez à jour la liste des joueurs\n2️⃣ Sélectionnez un joueur dans la dropdown\n3️⃣ Ajustez distance et vitesse\n4️⃣ Activez le stalker"
 })
 
 local TrollInfo = TrollTab:CreateParagraph({
-   Title = "⚠️ SECTION BETA - TROLL ADVANCED ⚠️",
-   Content = "🔧 VERSION BETA - CERTAINS BOUTONS PEUVENT NE PAS FONCTIONNER 🔧\n\n🔥 NOUVELLES OPTIONS TROLL 🔥\n\nSpin Attack: Rotation modérée mais efficace.\n\nRotation Contrôlée: Exactement 25 tours/seconde.\n\nScreen Shake: Secoue votre écran.\n\nJump Spam: Saute en continu.\n\nChat Spam: Messages automatiques.\n\nCamera Flip: Rotation de caméra.\n\nLag Bomb: Créer du lag (ATTENTION!)\n\n⚠️ ATTENTION: Cette section est en développement, certaines fonctionnalités peuvent être instables."
+   Title = "⚠️ SPIN ATTACK GLOBAL AMÉLIORÉ ⚠️",
+   Content = "🔥 SPIN ATTACK SPECTACULAIRE 🔥\n\n🌪️ SPIN ATTACK GLOBAL: Affecte TOUS les joueurs sur le serveur!\n🚀 LANCEMENT VERS LE CIEL: Les joueurs sont projetés très haut dans les airs!\n🌀 ROTATION MULTI-AXES: Spin sur tous les axes pour un effet chaotique!\n⬆️ ANTI-GRAVITÉ TEMPORAIRE: Maintient les joueurs en l'air plus longtemps!\n\n💥 Effet spectaculaire garanti - les joueurs s'envolent littéralement!\n\n⚡ Ajustez la vitesse avec le slider pour contrôler l'intensité!"
 })
+
+local AntiSpinSection = TrollTab:CreateSection("Protection Anti-Spin")
+
+local AntiSpinToggle = TrollTab:CreateToggle({
+   Name = "🛡️ Anti-Spin Attack (Protection contre les autres)",
+   CurrentValue = false,
+   Flag = "AntiSpinToggle",
+   Callback = function(Value)
+      isAntiSpinEnabled = Value
+      toggleAntiSpin()
+   end,
+})
+
+local AntiSpinInfo = TrollTab:CreateParagraph({
+   Title = "🛡️ PROTECTION ANTI-SPIN ULTRA 🛡️",
+   Content = "🔒 PROTECTION TOTALE AVEC TÉLÉPORTATION 🔒\n\n🛡️ BLOQUE AUTOMATIQUEMENT:\n• Tous les BodyAngularVelocity externes\n• Forces de lancement non autorisées\n• Anti-gravité forcée par d'autres scripts\n• États ragdoll causés par les spin attacks\n• Rotations excessives détectées\n\n🚀 NOUVEAU: SYSTÈME DE TÉLÉPORTATION:\n• Sauvegarde votre position toutes les 0.25 secondes\n• Détecte instantanément les spin attacks\n• Vous téléporte automatiquement à votre dernière position sûre\n• Arrête complètement toute rotation forcée\n\n✅ PERMET VOS PROPRES EFFETS:\n• Votre spin attack personnel fonctionne toujours\n• Votre fly n'est pas affecté\n• Vos autres fonctions restent actives\n\n⚡ Protection ULTIME - impossible de vous spin attack!"
+})
+
 
 
 
@@ -2084,6 +2954,8 @@ local LuckyInfiniteButton = AdminTab:CreateButton({
 player.CharacterAdded:Connect(function()
   task.wait(1)
 
+
+
   -- Restaurer la configuration si activé
   if configData.autoRestoreSettings then
     restoreConfiguration()
@@ -2092,7 +2964,6 @@ player.CharacterAdded:Connect(function()
     if isSpeedEnabled then toggleSpeed() end
     if isJumpEnabled then toggleJump() end
     if isNoClipEnabled then toggleNoClip() end
-    if isInvisible then toggleInvisibility() end
   end
 
   -- Recréer l'ESP pour le nouveau personnage
@@ -2101,6 +2972,10 @@ player.CharacterAdded:Connect(function()
     toggleESP()
     toggleESP()
   end
+
+  -- Mettre à jour la liste stalker
+  task.wait(1)
+  updateStalkerPlayerList()
 
   if isFlying then 
     isFlying = false
@@ -2111,11 +2986,13 @@ player.CharacterAdded:Connect(function()
       flyGui = nil
     end
   end
-  -- Réinitialiser la connexion du saut infini
-  if infiniteJumpConnection then
-    infiniteJumpConnection:Disconnect()
-    infiniteJumpConnection = nil
-    InfiniteJumpToggle:Set(false)
+  if isFlyNoClipEnabled then
+    isFlyNoClipEnabled = false
+    FlyNoClipToggle:Set(false)
+  end
+  -- Restaurer le saut infini si il était activé
+  if isInfiniteJumpEnabled then
+    toggleInfiniteJump()
   end
   -- Réinitialiser les fonctions de troll
   if isSpinAttackEnabled then
@@ -2126,9 +3003,10 @@ player.CharacterAdded:Connect(function()
     isSlowSpinEnabled = false
     SlowSpinToggle:Set(false)
   end
-  if isTpToPlayersEnabled then
-    isTpToPlayersEnabled = false
-    TpToPlayersToggle:Set(false)
+
+  if isStalkerEnabled then
+    isStalkerEnabled = false
+    StalkerToggle:Set(false)
   end
   if isAntiFallEnabled then
     isAntiFallEnabled = false
@@ -2138,30 +3016,15 @@ player.CharacterAdded:Connect(function()
     isAntiVoidEnabled = false
     AntiVoidToggle:Set(false)
   end
+  if isAntiSpinEnabled then
+    isAntiSpinEnabled = false
+    AntiSpinToggle:Set(false)
+  end
   if isFpsBoostEnabled then
     isFpsBoostEnabled = false
     FpsBoostToggle:Set(false)
   end
-  if isScreenShakeEnabled then
-    isScreenShakeEnabled = false
-    ScreenShakeToggle:Set(false)
-  end
-  if isJumpSpamEnabled then
-    isJumpSpamEnabled = false
-    JumpSpamToggle:Set(false)
-  end
-  if isChatSpamEnabled then
-    isChatSpamEnabled = false
-    ChatSpamToggle:Set(false)
-  end
-  if isLagBombEnabled then
-    isLagBombEnabled = false
-    LagBombToggle:Set(false)
-  end
-  if isCameraFlipEnabled then
-    isCameraFlipEnabled = false
-    CameraFlipToggle:Set(false)
-  end
+
   -- Nettoyage du bouton mobile
   if mobileToggleGui then
     mobileToggleGui:Destroy()
@@ -2170,6 +3033,10 @@ player.CharacterAdded:Connect(function()
   end
 
   -- Nettoyage des connexions
+  if flyNoClipConnection then
+    flyNoClipConnection:Disconnect()
+    flyNoClipConnection = nil
+  end
   if spinConnection then
     spinConnection:Disconnect()
     spinConnection = nil
@@ -2178,9 +3045,10 @@ player.CharacterAdded:Connect(function()
     slowSpinConnection:Disconnect()
     slowSpinConnection = nil
   end
-  if tpToPlayersConnection then
-    task.cancel(tpToPlayersConnection)
-    tpToPlayersConnection = nil
+
+  if stalkerConnection then
+    stalkerConnection:Disconnect()
+    stalkerConnection = nil
   end
   if antiFallConnection then
     antiFallConnection:Disconnect()
@@ -2190,26 +3058,11 @@ player.CharacterAdded:Connect(function()
     antiVoidConnection:Disconnect()
     antiVoidConnection = nil
   end
-  if screenShakeConnection then
-    screenShakeConnection:Disconnect()
-    screenShakeConnection = nil
+  if antiSpinConnection then
+    antiSpinConnection:Disconnect()
+    antiSpinConnection = nil
   end
-  if jumpSpamConnection then
-    task.cancel(jumpSpamConnection)
-    jumpSpamConnection = nil
-  end
-  if chatSpamConnection then
-    task.cancel(chatSpamConnection)
-    chatSpamConnection = nil
-  end
-  if lagBombConnection then
-    task.cancel(lagBombConnection)
-    lagBombConnection = nil
-  end
-  if cameraFlipConnection then
-    cameraFlipConnection:Disconnect()
-    cameraFlipConnection = nil
-  end
+
 
 
 
@@ -2221,7 +3074,7 @@ task.spawn(function()
   if configData.autoRestoreSettings then
     restoreConfiguration()
   end
-  
+
   -- Créer le bouton mobile si on est sur mobile
   if isMobile then
     task.wait(1) -- Attendre que l'interface soit complètement chargée
@@ -2232,6 +3085,10 @@ task.spawn(function()
     task.wait(1)
     createMobileToggleButton()
   end
+
+  -- Initialiser la liste des joueurs pour le stalker
+  task.wait(2)
+  updateStalkerPlayerList()
 end)
 
 print("Script multifunctionnel avec Téléportation, Boost, Fly et Admin chargé!")
