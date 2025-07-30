@@ -1,1165 +1,2237 @@
+
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
-local PlayerGui = player:WaitForChild("PlayerGui")
 
--- Platform Detection
-local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-local screenSize = workspace.CurrentCamera.ViewportSize
+-- Variables de téléportation
+local currentDistance = 15
 
--- GUI Container
-local gui = Instance.new("ScreenGui", PlayerGui)
-gui.Name = "TPGui"
-gui.ResetOnSpawn = false
+-- Variables de boost
+local walkSpeedBoost = 16
+local jumpPowerBoost = 50
+local isSpeedEnabled = false
+local isJumpEnabled = false
+local isNoClipEnabled = false
+local noClipConnection = nil
+local isInvisible = false
+local originalTransparencies = {}
 
--- Beautiful Startup Animation Popup
-local startupPopup = Instance.new("Frame", gui)
-startupPopup.Size = UDim2.new(0, 0, 0, 0)
-startupPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
-startupPopup.AnchorPoint = Vector2.new(0.5, 0.5)
-startupPopup.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
-startupPopup.BorderSizePixel = 0
-startupPopup.ZIndex = 1000
-Instance.new("UICorner", startupPopup).CornerRadius = UDim.new(0, 20)
+-- Variables de fly
+local flySpeed = 50
+local isFlying = false
+local bodyVelocity = nil
+local bodyAngularVelocity = nil
+local flyConnection = nil
 
--- Gradient background for popup
-local gradient = Instance.new("UIGradient", startupPopup)
-gradient.Color = ColorSequence.new{
-  ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 144, 255)),
-  ColorSequenceKeypoint.new(0.5, Color3.fromRGB(138, 43, 226)),
-  ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 20, 147))
+-- Variables de troll
+local isSpinAttackEnabled = false
+local spinConnection = nil
+local spinSpeed = 628318
+local isTpToPlayersEnabled = false
+local tpToPlayersConnection = nil
+
+-- Nouvelles variables de troll
+local isSlowSpinEnabled = false
+local slowSpinConnection = nil
+local slowSpinSpeed = 157 -- 25 tours par seconde (25 * 2π)
+local isScreenShakeEnabled = false
+local screenShakeConnection = nil
+local isJumpSpamEnabled = false
+local jumpSpamConnection = nil
+local isChatSpamEnabled = false
+local chatSpamConnection = nil
+local isLagBombEnabled = false
+local lagBombConnection = nil
+local isCameraFlipEnabled = false
+local cameraFlipConnection = nil
+
+
+
+-- Variables d'anti-fall
+local isAntiFallEnabled = false
+local antiFallConnection = nil
+
+-- Variables d'anti-void
+local isAntiVoidEnabled = false
+local antiVoidConnection = nil
+local voidThreshold = -500 -- Seuil Y en dessous duquel c'est considéré comme le vide
+
+-- Variables ESP
+local isEspEnabled = false
+local isTracersEnabled = false
+local isNametagsEnabled = false
+local isDistanceEnabled = false
+local isHighlightEnabled = false
+local espConnections = {}
+local espObjects = {}
+local tracerDistance = 1000
+local espColor = Color3.fromRGB(255, 0, 0)
+
+-- Variables de sauvegarde de positions
+local savedPositions = {}
+local currentSavedPositionName = ""
+
+-- Variables de configuration
+local configData = {
+  autoRestoreSettings = false,
+  savedSettings = {
+    walkSpeed = 16,
+    jumpPower = 50,
+    flySpeed = 50,
+    spinSpeed = 628318,
+    isSpeedEnabled = false,
+    isJumpEnabled = false,
+    isNoClipEnabled = false,
+    isInvisible = false,
+    isFlying = false,
+    isSpinAttackEnabled = false,
+    isTpToPlayersEnabled = false,
+    isAntiFallEnabled = false,
+    isFpsBoostEnabled = false
+  }
 }
-gradient.Rotation = 45
 
--- Animated border
-local border = Instance.new("Frame", startupPopup)
-border.Size = UDim2.new(1, 8, 1, 8)
-border.Position = UDim2.new(0.5, 0, 0.5, 0)
-border.AnchorPoint = Vector2.new(0.5, 0.5)
-border.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-border.ZIndex = 999
-Instance.new("UICorner", border).CornerRadius = UDim.new(0, 24)
+-- Variables pour le boost FPS
+local isFpsBoostEnabled = false
+local originalSettings = {}
 
-local borderGradient = Instance.new("UIGradient", border)
-borderGradient.Color = ColorSequence.new{
-  ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 215, 0)),
-  ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 20, 147)),
-  ColorSequenceKeypoint.new(1, Color3.fromRGB(138, 43, 226))
-}
 
--- Main title
-local popupTitle = Instance.new("TextLabel", startupPopup)
-popupTitle.Size = UDim2.new(1, 0, 0.4, 0)
-popupTitle.Position = UDim2.new(0, 0, 0.1, 0)
-popupTitle.BackgroundTransparency = 1
-popupTitle.Text = "ta mère la pute"
-popupTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-popupTitle.Font = Enum.Font.GothamBold
-popupTitle.TextSize = 48
-popupTitle.TextTransparency = 0
-popupTitle.TextStrokeTransparency = 0
-popupTitle.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-popupTitle.ZIndex = 1001
 
--- Subtitle
-local popupSubtitle = Instance.new("TextLabel", startupPopup)
-popupSubtitle.Size = UDim2.new(1, 0, 0.3, 0)
-popupSubtitle.Position = UDim2.new(0, 0, 0.45, 0)
-popupSubtitle.BackgroundTransparency = 1
-popupSubtitle.Text = "Fuck les noirs et fuck steal a dungeon"
-popupSubtitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-popupSubtitle.Font = Enum.Font.Gotham
-popupSubtitle.TextSize = 32
-popupTitle.TextTransparency = 0
-popupSubtitle.TextStrokeTransparency = 0
-popupSubtitle.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-popupSubtitle.ZIndex = 1001
 
--- Sparkle effects
-local function createSparkle(parent, delay)
-  local sparkle = Instance.new("Frame", parent)
-  sparkle.Size = UDim2.new(0, 8, 0, 8)
-  sparkle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-  sparkle.BorderSizePixel = 0
-  sparkle.Rotation = math.random(0, 360)
-  Instance.new("UICorner", sparkle).CornerRadius = UDim.new(1, 0)
-  
-  -- Random position
-  sparkle.Position = UDim2.new(math.random(10, 90)/100, 0, math.random(10, 90)/100, 0)
-  
-  -- Sparkle animation
-  spawn(function()
-    wait(delay)
-    for i = 1, 3 do
-      local sparkleTween = TweenService:Create(
-        sparkle,
-        TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 1, true),
-        {
-          Size = UDim2.new(0, 12, 0, 12),
-          BackgroundTransparency = 0.7,
-          Rotation = sparkle.Rotation + 180
-        }
-      )
-      sparkleTween:Play()
-      wait(1)
+
+-- Fonction pour sauvegarder une position
+local function saveCurrentPosition(name)
+  pcall(function()
+    if not name or name == "" then 
+      print("Nom de position invalide!")
+      return false 
     end
-    sparkle:Destroy()
+
+    local char = player.Character
+    if not char then 
+      print("Personnage non trouvé!")
+      return false 
+    end
+
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then 
+      print("HumanoidRootPart non trouvé!")
+      return false 
+    end
+
+    savedPositions[name] = {
+      position = root.Position,
+      cframe = root.CFrame
+    }
+
+    print("Position sauvegardée: " .. name .. " à " .. tostring(root.Position))
+    return true
   end)
+  return false
 end
 
--- Create multiple sparkles
-for i = 1, 15 do
-  createSparkle(startupPopup, math.random(0, 2))
-end
+-- Fonction pour se téléporter à une position sauvegardée
+local function teleportToSavedPosition(name)
+  local success = false
+  pcall(function()
+    if not name or name == "" then 
+      print("Nom de position invalide!")
+      return 
+    end
 
--- Startup Animation Sequence
-spawn(function()
-  -- Phase 1: Popup appears with bounce
-  local popupAppear = TweenService:Create(
-    startupPopup,
-    TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-    {Size = UDim2.new(0, 500, 0, 300)}
-  )
-  
-  -- Phase 2: Border rotation
-  local borderRotation = TweenService:Create(
-    borderGradient,
-    TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
-    {Rotation = 360}
-  )
-  
-  -- Phase 3: Text pulse animation
-  local textPulse = TweenService:Create(
-    popupTitle,
-    TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-    {TextSize = 52}
-  )
-  
-  local subtitlePulse = TweenService:Create(
-    popupSubtitle,
-    TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-    {TextSize = 36}
-  )
-  
-  -- Execute animations
-  popupAppear:Play()
-  popupAppear.Completed:Connect(function()
-    borderRotation:Play()
-    textPulse:Play()
-    subtitlePulse:Play()
-    
-    -- Auto-close after 4 seconds with fade out
-    wait(4)
-    local fadeOut = TweenService:Create(
-      startupPopup,
-      TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-      {
-        Size = UDim2.new(0, 0, 0, 0),
-        BackgroundTransparency = 1
-      }
-    )
-    
-    local titleFade = TweenService:Create(
-      popupTitle,
-      TweenInfo.new(1, Enum.EasingStyle.Quad),
-      {TextTransparency = 1}
-    )
-    
-    local subtitleFade = TweenService:Create(
-      popupSubtitle,
-      TweenInfo.new(1, Enum.EasingStyle.Quad),
-      {TextTransparency = 1}
-    )
-    
-    fadeOut:Play()
-    titleFade:Play()
-    subtitleFade:Play()
-    
-    fadeOut.Completed:Connect(function()
-      startupPopup:Destroy()
+    if not savedPositions[name] then 
+      print("Position '" .. name .. "' non trouvée!")
+      return 
+    end
+
+    local char = player.Character
+    if not char then 
+      print("Personnage non trouvé!")
+      return 
+    end
+
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then 
+      print("HumanoidRootPart non trouvé!")
+      return 
+    end
+
+    local savedPos = savedPositions[name]
+    if not savedPos or not savedPos.cframe then
+      print("Données de position corrompues!")
+      return
+    end
+
+    -- Créer l'effet de flou
+    local screenGui, blurEffect
+    pcall(function()
+      screenGui, blurEffect = createBlurEffect()
     end)
+
+    -- Téléportation directe plus fiable
+    root.CFrame = savedPos.cframe
+    print("Téléporté à: " .. tostring(savedPos.position))
+
+    -- Supprimer l'effet de flou après un délai
+    task.spawn(function()
+      task.wait(0.5)
+      pcall(function()
+        removeBlurEffect(screenGui, blurEffect)
+      end)
+    end)
+
+    success = true
   end)
-end)
-
--- Responsive sizing based on platform
-local frameWidth = isMobile and math.min(screenSize.X * 0.85, 320) or 300
-local frameHeight = isMobile and math.min(screenSize.Y * 0.6, 300) or 270
-
--- Main Frame
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, frameWidth, 0, frameHeight)
-frame.Position = UDim2.new(0.5, -frameWidth/2, 0.5, -frameHeight/2)
-frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-frame.BorderSizePixel = 0
-frame.Visible = true
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, isMobile and 16 or 12)
-
--- Title
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1, 0, 0, isMobile and 40 or 30)
-title.Position = UDim2.new(0, 0, 0, 0)
-title.Text = "Fuck Steal a Dungeon"
-title.BackgroundTransparency = 1
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Font = Enum.Font.GothamBold
-title.TextSize = isMobile and 18 or 20
-title.TextScaled = isMobile
-
--- Distance Slider
-local sliderBar = Instance.new("Frame", frame)
-sliderBar.Size = UDim2.new(0.8, 0, 0, 6)
-sliderBar.Position = UDim2.new(0.1, 0, 0.18, 0)
-sliderBar.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-Instance.new("UICorner", sliderBar).CornerRadius = UDim.new(0, 3)
-
-local knob = Instance.new("Frame", sliderBar)
-knob.Size = UDim2.new(0, 14, 0, 20)
-knob.Position = UDim2.new(0.5, -7, -0.7, 0)
-knob.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-
-local valueLabel = Instance.new("TextLabel", frame)
-valueLabel.Size = UDim2.new(1, 0, 0, 30)
-valueLabel.Position = UDim2.new(0, 0, 0.28, 0)
-valueLabel.BackgroundTransparency = 1
-valueLabel.TextColor3 = Color3.new(1, 1, 1)
-valueLabel.TextSize = 18
-valueLabel.Font = Enum.Font.Gotham
-valueLabel.Text = "Distance : 15 m"
-
--- Buttons
-local function createButton(text, yPos, color)
-  local btn = Instance.new("TextButton", frame)
-  btn.Size = UDim2.new(0.8, 0, 0, isMobile and 45 or 35)
-  btn.Position = UDim2.new(0.1, 0, yPos, 0)
-  btn.Text = text
-  btn.BackgroundColor3 = color
-  btn.TextColor3 = Color3.new(1, 1, 1)
-  btn.Font = Enum.Font.GothamBold
-  btn.TextSize = isMobile and 16 or 20
-  btn.TextScaled = isMobile
-  Instance.new("UICorner", btn).CornerRadius = UDim.new(0, isMobile and 12 or 8)
-  return btn
+  return success
 end
 
-local tpButton = createButton("TP", 0.42, Color3.fromRGB(0, 170, 255))
-local espButton = createButton("ESP ON", 0.61, Color3.fromRGB(40, 180, 90))
-local speedButton = createButton("Boost Vitesse", 0.78, Color3.fromRGB(255, 160, 0))
-
--- Popup
-local tpPopup = Instance.new("TextLabel", gui)
-tpPopup.Size = UDim2.new(1, 0, 1, 0)
-tpPopup.Position = UDim2.new(0, 0, 0, 0)
-tpPopup.BackgroundColor3 = Color3.new(0, 0, 0)
-tpPopup.BackgroundTransparency = 0.4
-tpPopup.Text = "Tu te tp fdp"
-tpPopup.TextColor3 = Color3.new(1, 1, 1)
-tpPopup.TextSize = 40
-tpPopup.Font = Enum.Font.GothamBold
-tpPopup.Visible = false
-
--- Toggle Button (improved and responsive)
-local toggleSize = isMobile and 70 or 56
-local toggleButton = Instance.new("TextButton", gui)
-toggleButton.Size = UDim2.new(0, toggleSize, 0, toggleSize)
-toggleButton.Position = UDim2.new(0, isMobile and 15 or 20, 0.5, -toggleSize/2)
-toggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-toggleButton.Text = "🎮"
-toggleButton.TextSize = isMobile and 32 or 28
-toggleButton.TextColor3 = Color3.new(1, 1, 1)
-toggleButton.Font = Enum.Font.GothamBold
-toggleButton.AutoButtonColor = false
-Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(1, 0)
-
--- Enhanced shadow effect
-local shadow = Instance.new("Frame", toggleButton)
-shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-shadow.Position = UDim2.new(0.5, 3, 0.5, 3)
-shadow.Size = UDim2.new(1, 0, 1, 0)
-shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-shadow.BackgroundTransparency = 0.7
-shadow.ZIndex = -1
-Instance.new("UICorner", shadow).CornerRadius = UDim.new(1, 0)
-
--- Pulse animation for mobile
-local pulseAnimation
-if isMobile then
-  pulseAnimation = TweenService:Create(
-    toggleButton,
-    TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-    {Size = UDim2.new(0, toggleSize * 1.1, 0, toggleSize * 1.1)}
-  )
-  pulseAnimation:Play()
+-- Fonction pour sauvegarder la configuration
+local function saveConfiguration()
+  configData.savedSettings = {
+    walkSpeed = walkSpeedBoost,
+    jumpPower = jumpPowerBoost,
+    flySpeed = flySpeed,
+    spinSpeed = spinSpeed,
+    isSpeedEnabled = isSpeedEnabled,
+    isJumpEnabled = isJumpEnabled,
+    isNoClipEnabled = isNoClipEnabled,
+    isInvisible = isInvisible,
+    isFlying = isFlying,
+    isSpinAttackEnabled = isSpinAttackEnabled,
+    isTpToPlayersEnabled = isTpToPlayersEnabled,
+    isAntiFallEnabled = isAntiFallEnabled,
+    isFpsBoostEnabled = isFpsBoostEnabled
+  }
 end
 
--- Enhanced hover effects
-if not isMobile then
-  toggleButton.MouseEnter:Connect(function()
-    local hoverTween = TweenService:Create(
-      toggleButton,
-      TweenInfo.new(0.2, Enum.EasingStyle.Quad),
-      {
-        BackgroundColor3 = Color3.fromRGB(0, 190, 255),
-        Size = UDim2.new(0, toggleSize * 1.15, 0, toggleSize * 1.15)
-      }
-    )
-    hoverTween:Play()
-  end)
-  
-  toggleButton.MouseLeave:Connect(function()
-    local leaveTween = TweenService:Create(
-      toggleButton,
-      TweenInfo.new(0.2, Enum.EasingStyle.Quad),
-      {
-        BackgroundColor3 = Color3.fromRGB(0, 170, 255),
-        Size = UDim2.new(0, toggleSize, 0, toggleSize)
-      }
-    )
-    leaveTween:Play()
-  end)
-end
+-- Fonction pour activer/désactiver le boost FPS
+local function toggleFpsBoost()
+  local lighting = game:GetService("Lighting")
+  local workspace = game:GetService("Workspace")
 
-local uiVisible = true
-toggleButton.MouseButton1Click:Connect(function()
-  uiVisible = not uiVisible
-  
-  -- Smooth fade animation
-  local targetTransparency = uiVisible and 0 or 1
-  local fadeTween = TweenService:Create(
-    frame,
-    TweenInfo.new(0.3, Enum.EasingStyle.Quad),
-    {BackgroundTransparency = targetTransparency}
-  )
-  
-  -- Update button appearance
-  toggleButton.Text = uiVisible and "🎮" or "📱"
-  toggleButton.BackgroundColor3 = uiVisible and Color3.fromRGB(0, 170, 255) or Color3.fromRGB(255, 100, 100)
-  
-  fadeTween:Play()
-  if uiVisible then
-    frame.Visible = true
-    fadeTween.Completed:Connect(function()
-      -- Make all children visible with fade
-      for _, child in pairs(frame:GetChildren()) do
-        if child:IsA("GuiObject") then
-          child.Visible = true
+  if isFpsBoostEnabled then
+    -- Sauvegarder les paramètres originaux
+    originalSettings.Brightness = lighting.Brightness
+    originalSettings.GlobalShadows = lighting.GlobalShadows
+    originalSettings.FogEnd = lighting.FogEnd
+    originalSettings.FogStart = lighting.FogStart
+
+    -- Appliquer les optimisations FPS
+    lighting.Brightness = 2
+    lighting.GlobalShadows = false
+    lighting.FogEnd = 9e9
+    lighting.FogStart = 0
+
+    -- Optimiser le workspace (suppression des propriétés obsolètes)
+    pcall(function()
+      workspace.StreamingEnabled = true
+    end)
+
+    -- Réduire la qualité graphique
+    pcall(function()
+      for _, obj in pairs(lighting:GetChildren()) do
+        if obj:IsA("PostEffect") then
+          obj.Enabled = false
         end
       end
     end)
-  else
-    fadeTween.Completed:Connect(function()
-      frame.Visible = false
-    end)
-  end
-end)
 
--- Draggable Function (mobile + pc, clamped)
-local function makeDraggable(frame)
-  local dragging = false
-  local dragInput, dragStart, startPos
-
-  frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-      -- Don't start dragging if we're interacting with a slider
-      local hitObject = input.Hit and input.Hit.Parent
-      if hitObject and (hitObject == sliderBar or hitObject == speedSliderBar or hitObject == jumpSliderBar or 
-                       hitObject.Parent == sliderBar or hitObject.Parent == speedSliderBar or hitObject.Parent == jumpSliderBar) then
-        return
+    -- Optimiser les parties avec protection d'erreur
+    pcall(function()
+      for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Part") or obj:IsA("MeshPart") then
+          obj.Material = Enum.Material.Plastic
+          obj.Reflectance = 0
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+          obj.Transparency = 1
+        elseif obj:IsA("ParticleEmitter") or obj:IsA("Fire") or obj:IsA("Smoke") then
+          obj.Enabled = false
+        end
       end
-      
-      dragging = true
-      dragStart = input.Position
-      startPos = frame.Position
-      input.Changed:Connect(function()
-        if input.UserInputState == Enum.UserInputState.End then
-          dragging = false
+    end)
+
+    print("Boost FPS activé - Qualité graphique réduite pour de meilleures performances!")
+  else
+    -- Restaurer les paramètres originaux
+    if originalSettings.Brightness then
+      lighting.Brightness = originalSettings.Brightness
+      lighting.GlobalShadows = originalSettings.GlobalShadows
+      lighting.FogEnd = originalSettings.FogEnd
+      lighting.FogStart = originalSettings.FogStart
+    end
+
+    -- Réactiver les effets avec protection d'erreur
+    pcall(function()
+      for _, obj in pairs(lighting:GetChildren()) do
+        if obj:IsA("PostEffect") then
+          obj.Enabled = true
+        end
+      end
+    end)
+
+    -- Restaurer les propriétés des objets avec protection d'erreur
+    pcall(function()
+      for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Decal") or obj:IsA("Texture") then
+          obj.Transparency = 0
+        elseif obj:IsA("ParticleEmitter") or obj:IsA("Fire") or obj:IsA("Smoke") then
+          obj.Enabled = true
+        end
+      end
+    end)
+
+    print("Boost FPS désactivé - Qualité graphique restaurée!")
+  end
+end
+
+-- Fonction pour restaurer la configuration
+local function restoreConfiguration()
+  if not configData.autoRestoreSettings then return end
+
+  local settings = configData.savedSettings
+
+  -- Restaurer les valeurs des sliders
+  walkSpeedBoost = settings.walkSpeed
+  jumpPowerBoost = settings.jumpPower
+  flySpeed = settings.flySpeed
+  spinSpeed = settings.spinSpeed
+
+
+
+  -- Attendre que l'interface soit créée
+  task.wait(1)
+
+  -- Restaurer les états des toggles
+  if settings.isSpeedEnabled then
+    isSpeedEnabled = true
+    toggleSpeed()
+  end
+  if settings.isJumpEnabled then
+    isJumpEnabled = true
+    toggleJump()
+  end
+  if settings.isNoClipEnabled then
+    isNoClipEnabled = true
+    toggleNoClip()
+  end
+  if settings.isInvisible then
+    isInvisible = true
+    toggleInvisibility()
+  end
+  if settings.isAntiFallEnabled then
+    isAntiFallEnabled = true
+    toggleAntiFall()
+  end
+  if settings.isFpsBoostEnabled then
+    isFpsBoostEnabled = true
+    toggleFpsBoost()
+  end
+end
+
+-- Fonction pour créer l'effet de flou
+local function createBlurEffect()
+  local playerGui = player:WaitForChild("PlayerGui")
+
+  local screenGui = Instance.new("ScreenGui")
+  screenGui.Name = "BlurEffect"
+  screenGui.Parent = playerGui
+
+  local blurFrame = Instance.new("Frame")
+  blurFrame.Size = UDim2.new(1, 0, 1, 0)
+  blurFrame.Position = UDim2.new(0, 0, 0, 0)
+  blurFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+  blurFrame.BackgroundTransparency = 0.3
+  blurFrame.Parent = screenGui
+
+  local blurEffect = Instance.new("BlurEffect")
+  blurEffect.Size = 24
+  blurEffect.Parent = game.Lighting
+
+  return screenGui, blurEffect
+end
+
+-- Fonction pour supprimer l'effet de flou
+local function removeBlurEffect(screenGui, blurEffect)
+  if screenGui then
+    screenGui:Destroy()
+  end
+  if blurEffect then
+    blurEffect:Destroy()
+  end
+end
+
+-- TP Function avec effet de flou
+local function teleport()
+  -- Vérifications de sécurité
+  if not player or not player.Parent then 
+    print("Joueur non valide")
+    return 
+  end
+
+  local char = player.Character
+  if not char then 
+    print("Personnage non trouvé")
+    return 
+  end
+
+  local root = char:FindFirstChild("HumanoidRootPart")
+  local humanoid = char:FindFirstChildOfClass("Humanoid")
+
+  if not root then 
+    print("HumanoidRootPart non trouvé")
+    return 
+  end
+
+  if not humanoid then 
+    print("Humanoid non trouvé")
+    return 
+  end
+
+  -- Créer l'effet de flou avec vérification
+  local screenGui, blurEffect
+  pcall(function()
+    screenGui, blurEffect = createBlurEffect()
+  end)
+
+  local function safeTweenTo(offset)
+    -- Vérifier que root existe toujours
+    if not root or not root.Parent then return false end
+
+    local goal = root.CFrame + offset
+    local success = false
+
+    pcall(function()
+      local tween = TweenService:Create(root, TweenInfo.new(0.08, Enum.EasingStyle.Sine), {CFrame = goal})
+      tween:Play()
+      tween.Completed:Wait()
+
+      -- Vérifier si la téléportation a réussi
+      if root and root.Parent then
+        success = (root.Position - goal.Position).Magnitude < 5
+      end
+    end)
+
+    return success
+  end
+
+  -- Vérifier que root existe toujours avant d'obtenir la direction
+  if not root or not root.Parent then return end
+  local dir = root.CFrame.LookVector.Unit
+  local teleportSuccess = false
+
+  for i = 1, 3 do -- Réduire les tentatives à 3
+    if not root or not root.Parent or not humanoid or not humanoid.Parent then 
+      break 
+    end
+
+    local down = Vector3.new(0, -8, 0)  -- Réduire la distance vers le bas
+    local forward = dir * math.min(currentDistance, 50) -- Limiter la distance
+    local up = Vector3.new(0, 10, 0)   -- Réduire la hauteur
+
+    -- Changer l'état avec vérification
+    pcall(function()
+      if humanoid and humanoid.Parent then
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+      end
+    end)
+
+    if safeTweenTo(down) and safeTweenTo(forward) and safeTweenTo(up) then
+      teleportSuccess = true
+      break
+    end
+    task.wait(0.15)
+  end
+
+  -- Supprimer l'effet de flou avec vérification
+  task.wait(0.2)
+  pcall(function()
+    removeBlurEffect(screenGui, blurEffect)
+  end)
+
+  if teleportSuccess then
+    print("Téléportation réussie!")
+  else
+    print("Téléportation échouée - réessayez")
+  end
+end
+
+-- Fonction pour activer/désactiver la vitesse
+local function toggleSpeed()
+  local char = player.Character
+  if char then
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+      if isSpeedEnabled then
+        humanoid.WalkSpeed = walkSpeedBoost
+      else
+        humanoid.WalkSpeed = 16
+      end
+    end
+  end
+end
+
+-- Fonction pour activer/désactiver le saut
+local function toggleJump()
+  local char = player.Character
+  if char then
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+      if isJumpEnabled then
+        humanoid.JumpPower = jumpPowerBoost
+      else
+        humanoid.JumpPower = 50
+      end
+    end
+  end
+end
+
+-- Fonction pour activer/désactiver le NoClip amélioré
+local function toggleNoClip()
+  local char = player.Character
+  if not char then return end
+
+  if isNoClipEnabled then
+    -- Activer NoClip amélioré avec toutes les parties
+    noClipConnection = RunService.Heartbeat:Connect(function()
+      local currentChar = player.Character
+      if currentChar then
+        -- Désactiver les collisions pour toutes les parties du personnage
+        for _, part in pairs(currentChar:GetDescendants()) do
+          if part:IsA("BasePart") then
+            part.CanCollide = false
+          end
+        end
+
+        -- Gérer spécialement l'Humanoid pour éviter les problèmes de mouvement
+        local humanoid = currentChar:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+          -- Empêcher l'Humanoid de changer d'état à cause des collisions
+          if humanoid:GetState() == Enum.HumanoidStateType.Physics then
+            humanoid:ChangeState(Enum.HumanoidStateType.Running)
+          end
+        end
+      end
+    end)
+    print("NoClip activé - Toutes les collisions désactivées!")
+  else
+    -- Désactiver NoClip
+    if noClipConnection then
+      noClipConnection:Disconnect()
+      noClipConnection = nil
+    end
+
+    -- Restaurer les collisions normales
+    local char = player.Character
+    if char then
+      for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+          -- Restaurer les collisions selon le type de partie
+          if part.Name == "HumanoidRootPart" then
+            part.CanCollide = false -- HumanoidRootPart reste sans collision
+          else
+            part.CanCollide = true -- Autres parties retrouvent leurs collisions
+          end
+        end
+      end
+    end
+    print("NoClip désactivé - Collisions restaurées!")
+  end
+end
+
+-- Fonction pour activer/désactiver l'invisibilité
+local function toggleInvisibility()
+  local char = player.Character
+  if not char then return end
+
+  if isInvisible then
+    -- Activer l'invisibilité
+    for _, part in pairs(char:GetChildren()) do
+      if part:IsA("BasePart") then
+        originalTransparencies[part] = part.Transparency
+        part.Transparency = 1
+      elseif part:IsA("Accessory") then
+        local handle = part:FindFirstChild("Handle")
+        if handle then
+          originalTransparencies[handle] = handle.Transparency
+          handle.Transparency = 1
+        end
+      end
+    end
+
+    -- Rendre la tête invisible aussi
+    local head = char:FindFirstChild("Head")
+    if head then
+      for _, child in pairs(head:GetChildren()) do
+        if child:IsA("Decal") then
+          originalTransparencies[child] = child.Transparency
+          child.Transparency = 1
+        end
+      end
+    end
+  else
+    -- Désactiver l'invisibilité
+    for part, transparency in pairs(originalTransparencies) do
+      if part and part.Parent then
+        part.Transparency = transparency
+      end
+    end
+    originalTransparencies = {}
+  end
+end
+
+-- Variables pour les contrôles mobiles
+local flyGui = nil
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+-- Variables pour le bouton mobile du panel
+local mobileToggleGui = nil
+local isPanelVisible = true
+
+-- Fonction pour créer le bouton mobile de toggle du panel
+local function createMobileToggleButton()
+  if not isMobile or mobileToggleGui then return end
+
+  local playerGui = player:WaitForChild("PlayerGui")
+
+  mobileToggleGui = Instance.new("ScreenGui")
+  mobileToggleGui.Name = "MobileTogglePanel"
+  mobileToggleGui.Parent = playerGui
+
+  -- Bouton toggle principal
+  local toggleButton = Instance.new("TextButton")
+  toggleButton.Size = UDim2.new(0, 80, 0, 80)
+  toggleButton.Position = UDim2.new(1, -90, 0, 10)
+  toggleButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.8)
+  toggleButton.Text = "📱"
+  toggleButton.TextSize = 32
+  toggleButton.TextColor3 = Color3.new(1, 1, 1)
+  toggleButton.BorderSizePixel = 0
+  toggleButton.Parent = mobileToggleGui
+
+  local toggleButtonCorner = Instance.new("UICorner")
+  toggleButtonCorner.CornerRadius = UDim.new(0, 40)
+  toggleButtonCorner.Parent = toggleButton
+
+  -- Effet visuel au clic
+  toggleButton.MouseButton1Click:Connect(function()
+    isPanelVisible = not isPanelVisible
+    
+    -- Animer le bouton
+    local tween = game:GetService("TweenService"):Create(
+      toggleButton,
+      TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+      {Size = UDim2.new(0, 70, 0, 70)}
+    )
+    tween:Play()
+    
+    tween.Completed:Connect(function()
+      local returnTween = game:GetService("TweenService"):Create(
+        toggleButton,
+        TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+        {Size = UDim2.new(0, 80, 0, 80)}
+      )
+      returnTween:Play()
+    end)
+
+    -- Toggle du panel Rayfield
+    if isPanelVisible then
+      toggleButton.Text = "📱"
+      toggleButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.8)
+      -- Montrer le panel Rayfield
+      pcall(function()
+        local rayFieldGui = playerGui:FindFirstChild("RayField")
+        if rayFieldGui then
+          rayFieldGui.Enabled = true
         end
       end)
+      print("Panel ouvert")
+    else
+      toggleButton.Text = "❌"
+      toggleButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
+      -- Cacher le panel Rayfield
+      pcall(function()
+        local rayFieldGui = playerGui:FindFirstChild("RayField")
+        if rayFieldGui then
+          rayFieldGui.Enabled = false
+        end
+      end)
+      print("Panel fermé")
     end
   end)
 
-  UserInputService.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+  -- Rendre le bouton déplaçable
+  local dragging = false
+  local dragStart = nil
+  local startPos = nil
+
+  toggleButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+      dragging = true
+      dragStart = input.Position
+      startPos = toggleButton.Position
+    end
+  end)
+
+  toggleButton.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.Touch then
       local delta = input.Position - dragStart
-      local newPos = UDim2.new(0, startPos.X.Offset + delta.X, 0, startPos.Y.Offset + delta.Y)
-      local screen = workspace.CurrentCamera.ViewportSize
-      newPos = UDim2.new(0,
-        math.clamp(newPos.X.Offset, 0, screen.X - frame.AbsoluteSize.X),
-        0,
-        math.clamp(newPos.Y.Offset, 0, screen.Y - frame.AbsoluteSize.Y)
+      toggleButton.Position = UDim2.new(
+        startPos.X.Scale,
+        startPos.X.Offset + delta.X,
+        startPos.Y.Scale,
+        startPos.Y.Offset + delta.Y
       )
-      frame.Position = newPos
     end
   end)
+
+  toggleButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+      dragging = false
+    end
+  end)
+
+  print("Bouton mobile créé! Appuyez pour ouvrir/fermer le panel")
 end
 
-makeDraggable(frame)
-makeDraggable(toggleButton)
+-- Fonction pour créer l'interface mobile de vol
+local function createFlyMobileGui()
+  if flyGui then return end
 
--- Slider Logic
-local currentDistance = 15
-local minDist = 0
-local maxDist = 30
-local isDraggingDistanceSlider = false
+  local playerGui = player:WaitForChild("PlayerGui")
 
-local function updateSlider(inputX)
-  local relX = math.clamp(inputX - sliderBar.AbsolutePosition.X, 0, sliderBar.AbsoluteSize.X)
-  local percent = relX / sliderBar.AbsoluteSize.X
-  currentDistance = math.floor(minDist + (maxDist - minDist) * percent + 0.5)
-  knob.Position = UDim2.new(percent, -7, -0.7, 0)
-  valueLabel.Text = "Distance : " .. currentDistance .. " m"
+  flyGui = Instance.new("ScreenGui")
+  flyGui.Name = "FlyControls"
+  flyGui.Parent = playerGui
+
+  -- Joystick de déplacement
+  local moveFrame = Instance.new("Frame")
+  moveFrame.Size = UDim2.new(0, 120, 0, 120)
+  moveFrame.Position = UDim2.new(0, 20, 1, -140)
+  moveFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+  moveFrame.BackgroundTransparency = 0.5
+  moveFrame.BorderSizePixel = 0
+  moveFrame.Parent = flyGui
+
+  local moveFrameCorner = Instance.new("UICorner")
+  moveFrameCorner.CornerRadius = UDim.new(0, 60)
+  moveFrameCorner.Parent = moveFrame
+
+  local moveStick = Instance.new("Frame")
+  moveStick.Size = UDim2.new(0, 40, 0, 40)
+  moveStick.Position = UDim2.new(0.5, -20, 0.5, -20)
+  moveStick.BackgroundColor3 = Color3.new(1, 1, 1)
+  moveStick.BorderSizePixel = 0
+  moveStick.Parent = moveFrame
+
+  local moveStickCorner = Instance.new("UICorner")
+  moveStickCorner.CornerRadius = UDim.new(0, 20)
+  moveStickCorner.Parent = moveStick
+
+  -- Boutons verticaux
+  local upButton = Instance.new("TextButton")
+  upButton.Size = UDim2.new(0, 60, 0, 60)
+  upButton.Position = UDim2.new(1, -80, 1, -200)
+  upButton.BackgroundColor3 = Color3.new(0, 0.8, 0)
+  upButton.Text = "↑"
+  upButton.TextSize = 24
+  upButton.TextColor3 = Color3.new(1, 1, 1)
+  upButton.BorderSizePixel = 0
+  upButton.Parent = flyGui
+
+  local upButtonCorner = Instance.new("UICorner")
+  upButtonCorner.CornerRadius = UDim.new(0, 30)
+  upButtonCorner.Parent = upButton
+
+  local downButton = Instance.new("TextButton")
+  downButton.Size = UDim2.new(0, 60, 0, 60)
+  downButton.Position = UDim2.new(1, -80, 1, -130)
+  downButton.BackgroundColor3 = Color3.new(0.8, 0, 0)
+  downButton.Text = "↓"
+  downButton.TextSize = 24
+  downButton.TextColor3 = Color3.new(1, 1, 1)
+  downButton.BorderSizePixel = 0
+  downButton.Parent = flyGui
+
+  local downButtonCorner = Instance.new("UICorner")
+  downButtonCorner.CornerRadius = UDim.new(0, 30)
+  downButtonCorner.Parent = downButton
+
+  return moveFrame, moveStick, upButton, downButton
 end
 
-sliderBar.InputBegan:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-    isDraggingDistanceSlider = true
-    updateSlider(input.Position.X)
-    input.UserInputService = nil -- Prevent event propagation
-  end
-end)
+-- Variables pour les contrôles mobiles
+local mobileControls = {
+  moveX = 0,
+  moveY = 0,
+  up = false,
+  down = false
+}
 
-sliderBar.InputEnded:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-    isDraggingDistanceSlider = false
-  end
-end)
+-- Fonction pour activer/désactiver le fly
+local function toggleFly()
+  local char = player.Character
+  if not char then return end
 
-UserInputService.InputChanged:Connect(function(input)
-  if isDraggingDistanceSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-    updateSlider(input.Position.X)
-  end
-end)
-
--- TP Function
-local function teleport()
-  local char = player.Character or player.CharacterAdded:Wait()
   local root = char:FindFirstChild("HumanoidRootPart")
   local humanoid = char:FindFirstChildOfClass("Humanoid")
   if not root or not humanoid then return end
 
-  tpPopup.Visible = true
+  if isFlying then
+    -- Soulever le personnage avant d'activer le fly pour éviter le sol
+    root.CFrame = root.CFrame + Vector3.new(0, 5, 0)
 
-  local function safeTweenTo(offset)
-    local goal = root.CFrame + offset
-    local tween = TweenService:Create(root, TweenInfo.new(0.08, Enum.EasingStyle.Sine), {CFrame = goal})
-    tween:Play()
-    tween.Completed:Wait()
-    return (root.Position - goal.Position).Magnitude < 1
-  end
+    -- Activer le fly
+    bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    bodyVelocity.Parent = root
 
-  local dir = root.CFrame.LookVector.Unit
-  local success = false
+    bodyAngularVelocity = Instance.new("BodyAngularVelocity")
+    bodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
+    bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
+    bodyAngularVelocity.Parent = root
 
-  for i = 1, 5 do
-    local down = Vector3.new(0, -10, 0)
-    local forward = dir * currentDistance
-    local up = Vector3.new(0, 12, 0)
-    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    humanoid.PlatformStand = true
 
-    if safeTweenTo(down) and safeTweenTo(forward) and safeTweenTo(up) then
-      success = true
-      break
+    -- Créer l'interface mobile si nécessaire
+    local moveFrame, moveStick, upButton, downButton
+    if isMobile then
+      moveFrame, moveStick, upButton, downButton = createFlyMobileGui()
+
+      -- Gestion du joystick
+      local isDragging = false
+      local startPos = moveStick.Position
+
+      moveFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+          isDragging = true
+        end
+      end)
+
+      moveFrame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+          isDragging = false
+          moveStick.Position = startPos
+          mobileControls.moveX = 0
+          mobileControls.moveY = 0
+        end
+      end)
+
+      moveFrame.InputChanged:Connect(function(input)
+        if isDragging and input.UserInputType == Enum.UserInputType.Touch then
+          local delta = input.Position - moveFrame.AbsolutePosition - moveFrame.AbsoluteSize/2
+          local distance = math.min(delta.Magnitude, 40)
+          local angle = math.atan2(delta.Y, delta.X)
+
+          local newX = math.cos(angle) * distance
+          local newY = math.sin(angle) * distance
+
+          moveStick.Position = UDim2.new(0.5, newX, 0.5, newY)
+
+          mobileControls.moveX = newX / 40
+          mobileControls.moveY = -newY / 40 -- Inverser Y pour correspondre aux contrôles
+        end
+      end)
+
+      -- Boutons haut/bas
+      upButton.TouchTap:Connect(function()
+        mobileControls.up = not mobileControls.up
+        upButton.BackgroundColor3 = mobileControls.up and Color3.new(0, 1, 0) or Color3.new(0, 0.8, 0)
+      end)
+
+      downButton.TouchTap:Connect(function()
+        mobileControls.down = not mobileControls.down
+        downButton.BackgroundColor3 = mobileControls.down and Color3.new(1, 0, 0) or Color3.new(0.8, 0, 0)
+      end)
     end
-    task.wait(0.1)
-  end
 
-  tpPopup.Visible = false
+    flyConnection = RunService.Heartbeat:Connect(function()
+      if not root or not root.Parent then return end
+
+      local camera = workspace.CurrentCamera
+      local lookDirection = camera.CFrame.LookVector
+      local rightDirection = camera.CFrame.RightVector
+      local upDirection = camera.CFrame.UpVector -- Utiliser l'UpVector de la caméra pour suivre son orientation
+
+      local velocity = Vector3.new(0, 0, 0)
+
+      if isMobile then
+        -- Contrôles mobiles
+        if mobileControls.moveY ~= 0 then
+          -- Utiliser la direction complète de la caméra (incluant l'inclinaison)
+          velocity = velocity + (lookDirection * mobileControls.moveY * flySpeed)
+        end
+        if mobileControls.moveX ~= 0 then
+          velocity = velocity + (rightDirection * mobileControls.moveX * flySpeed)
+        end
+        if mobileControls.up then
+          velocity = velocity + (Vector3.new(0, 1, 0) * flySpeed) -- Toujours monter verticalement
+        end
+        if mobileControls.down then
+          velocity = velocity - (Vector3.new(0, 1, 0) * flySpeed) -- Toujours descendre verticalement
+        end
+      else
+        -- Contrôles PC - suit parfaitement la direction de la caméra
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+          -- Utiliser la direction complète de la caméra (incluant l'inclinaison verticale)
+          velocity = velocity + (lookDirection * flySpeed)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+          velocity = velocity - (lookDirection * flySpeed)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+          velocity = velocity - (rightDirection * flySpeed)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+          velocity = velocity + (rightDirection * flySpeed)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+          velocity = velocity + (Vector3.new(0, 1, 0) * flySpeed) -- Monter verticalement pur
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+          velocity = velocity - (Vector3.new(0, 1, 0) * flySpeed) -- Descendre verticalement pur
+        end
+      end
+
+      -- Appliquer la vélocité
+      if bodyVelocity and bodyVelocity.Parent then
+        bodyVelocity.Velocity = velocity
+      end
+    end)
+  else
+    -- Désactiver le fly
+    if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+    if bodyAngularVelocity then bodyAngularVelocity:Destroy() bodyAngularVelocity = nil end
+    if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+
+    -- Supprimer l'interface mobile
+    if flyGui then
+      flyGui:Destroy()
+      flyGui = nil
+    end
+
+    -- Réinitialiser les contrôles mobiles
+    mobileControls.moveX = 0
+    mobileControls.moveY = 0
+    mobileControls.up = false
+    mobileControls.down = false
+
+    -- Nettoyer tous les BodyObjects
+    for _, obj in pairs(root:GetChildren()) do
+      if obj:IsA("BodyPosition") or obj:IsA("BodyVelocity") or obj:IsA("BodyAngularVelocity") then
+        obj:Destroy()
+      end
+    end
+
+    humanoid.PlatformStand = false
+  end
 end
 
-tpButton.MouseButton1Click:Connect(teleport)
-
--- ESP System Variables
-local espTags = {}
-local espSettings = {
-  enabled = false,
-  showPlayers = true,
-  showObjects = true,
-  showInvisible = true,
-  showAll = false,
-  viewRadius = 100
-}
-
--- ESP Configuration Interface
-local espFrameWidth = isMobile and math.min(screenSize.X * 0.9, 380) or 400
-local espFrameHeight = isMobile and math.min(screenSize.Y * 0.85, 500) or 520
-
-local espFrame = Instance.new("Frame", gui)
-espFrame.Size = UDim2.new(0, espFrameWidth, 0, espFrameHeight)
-espFrame.Position = UDim2.new(0.5, -espFrameWidth/2, 0.5, -espFrameHeight/2)
-espFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-espFrame.BorderSizePixel = 0
-espFrame.Visible = false
-Instance.new("UICorner", espFrame).CornerRadius = UDim.new(0, isMobile and 16 or 12)
-
--- ESP Frame Gradient
-local espGradient = Instance.new("UIGradient", espFrame)
-espGradient.Color = ColorSequence.new{
-  ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 25, 35)),
-  ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 15, 25))
-}
-espGradient.Rotation = 90
-
--- ESP Frame Title
-local espTitle = Instance.new("TextLabel", espFrame)
-espTitle.Size = UDim2.new(1, 0, 0, isMobile and 50 or 45)
-espTitle.Position = UDim2.new(0, 0, 0, 0)
-espTitle.Text = "Esp de salope"
-espTitle.BackgroundTransparency = 1
-espTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-espTitle.Font = Enum.Font.GothamBold
-espTitle.TextSize = isMobile and 18 or 20
-espTitle.TextScaled = isMobile
-
--- ESP Close Button
-local espCloseButton = Instance.new("TextButton", espFrame)
-espCloseButton.Size = UDim2.new(0, isMobile and 40 or 35, 0, isMobile and 40 or 35)
-espCloseButton.Position = UDim2.new(1, -(isMobile and 45 or 40), 0, 5)
-espCloseButton.Text = "✕"
-espCloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-espCloseButton.TextColor3 = Color3.new(1, 1, 1)
-espCloseButton.Font = Enum.Font.GothamBold
-espCloseButton.TextSize = isMobile and 18 or 16
-Instance.new("UICorner", espCloseButton).CornerRadius = UDim.new(0, 6)
-
-espCloseButton.MouseButton1Click:Connect(function()
-  local closeTween = TweenService:Create(
-    espFrame,
-    TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In),
-    {Size = UDim2.new(0, 0, 0, 0)}
-  )
-  closeTween:Play()
-  closeTween.Completed:Connect(function()
-    espFrame.Visible = false
-    espFrame.Size = UDim2.new(0, espFrameWidth, 0, espFrameHeight)
-  end)
-end)
-
--- ESP Options Toggle Buttons
-local function createESPToggle(parent, text, yPos, enabled, callback)
-  local toggle = Instance.new("TextButton", parent)
-  toggle.Size = UDim2.new(0.85, 0, 0, isMobile and 40 or 35)
-  toggle.Position = UDim2.new(0.075, 0, 0, yPos)
-  toggle.Text = text .. (enabled and ": ON" or ": OFF")
-  toggle.BackgroundColor3 = enabled and Color3.fromRGB(40, 180, 90) or Color3.fromRGB(70, 70, 80)
-  toggle.TextColor3 = Color3.new(1, 1, 1)
-  toggle.Font = Enum.Font.GothamBold
-  toggle.TextSize = isMobile and 14 or 16
-  Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 8)
-  
-  toggle.MouseButton1Click:Connect(function()
-    enabled = not enabled
-    toggle.Text = text .. (enabled and ": ON" or ": OFF")
-    toggle.BackgroundColor3 = enabled and Color3.fromRGB(40, 180, 90) or Color3.fromRGB(70, 70, 80)
-    callback(enabled)
-  end)
-  
-  return toggle
-end
-
--- ESP Toggle Options
-local playersToggle = createESPToggle(espFrame, "👥 Joueurs", 60, espSettings.showPlayers, function(enabled)
-  espSettings.showPlayers = enabled
-  if espSettings.enabled then updateESP() end
-end)
-
-local objectsToggle = createESPToggle(espFrame, "📦 Objets", 110, espSettings.showObjects, function(enabled)
-  espSettings.showObjects = enabled
-  if espSettings.enabled then updateESP() end
-end)
-
-local invisibleToggle = createESPToggle(espFrame, "👻 Objets Invisibles", 160, espSettings.showInvisible, function(enabled)
-  espSettings.showInvisible = enabled
-  if espSettings.enabled then updateESP() end
-end)
-
-local allToggle = createESPToggle(espFrame, "🌐 Tout Afficher", 210, espSettings.showAll, function(enabled)
-  espSettings.showAll = enabled
-  if espSettings.enabled then updateESP() end
-end)
-
--- Radius Slider
-local radiusLabel = Instance.new("TextLabel", espFrame)
-radiusLabel.Size = UDim2.new(1, 0, 0, 25)
-radiusLabel.Position = UDim2.new(0, 0, 0, 270)
-radiusLabel.Text = "🔍 Rayon de Vision"
-radiusLabel.BackgroundTransparency = 1
-radiusLabel.TextColor3 = Color3.new(1, 1, 1)
-radiusLabel.Font = Enum.Font.GothamBold
-radiusLabel.TextSize = 16
-
-local radiusSliderBar = Instance.new("Frame", espFrame)
-radiusSliderBar.Size = UDim2.new(0.8, 0, 0, 6)
-radiusSliderBar.Position = UDim2.new(0.1, 0, 0, 305)
-radiusSliderBar.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-Instance.new("UICorner", radiusSliderBar).CornerRadius = UDim.new(0, 3)
-
-local radiusKnob = Instance.new("Frame", radiusSliderBar)
-radiusKnob.Size = UDim2.new(0, 14, 0, 20)
-radiusKnob.Position = UDim2.new(0.5, -7, -0.7, 0)
-radiusKnob.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-Instance.new("UICorner", radiusKnob).CornerRadius = UDim.new(1, 0)
-
-local radiusValueLabel = Instance.new("TextLabel", espFrame)
-radiusValueLabel.Size = UDim2.new(1, 0, 0, 25)
-radiusValueLabel.Position = UDim2.new(0, 0, 0, 330)
-radiusValueLabel.BackgroundTransparency = 1
-radiusValueLabel.TextColor3 = Color3.new(1, 1, 1)
-radiusValueLabel.TextSize = 14
-radiusValueLabel.Font = Enum.Font.Gotham
-radiusValueLabel.Text = "Rayon : " .. espSettings.viewRadius .. " studs"
-
--- Radius Slider Logic
-local isDraggingRadiusSlider = false
-
-local function updateRadiusSlider(inputX)
-  local relX = math.clamp(inputX - radiusSliderBar.AbsolutePosition.X, 0, radiusSliderBar.AbsoluteSize.X)
-  local percent = relX / radiusSliderBar.AbsoluteSize.X
-  espSettings.viewRadius = math.floor(50 + (500 - 50) * percent + 0.5)
-  radiusKnob.Position = UDim2.new(percent, -7, -0.7, 0)
-  radiusValueLabel.Text = "Rayon : " .. espSettings.viewRadius .. " studs"
-  if espSettings.enabled then updateESP() end
-end
-
-radiusSliderBar.InputBegan:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-    isDraggingRadiusSlider = true
-    updateRadiusSlider(input.Position.X)
-  end
-end)
-
-radiusSliderBar.InputEnded:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-    isDraggingRadiusSlider = false
-  end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-  if isDraggingRadiusSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-    updateRadiusSlider(input.Position.X)
-  end
-end)
-
--- Apply ESP Button
-local applyESPButton = Instance.new("TextButton", espFrame)
-applyESPButton.Size = UDim2.new(0.8, 0, 0, 40)
-applyESPButton.Position = UDim2.new(0.1, 0, 0, 370)
-applyESPButton.Text = "✅ Activer ESP"
-applyESPButton.BackgroundColor3 = Color3.fromRGB(40, 180, 90)
-applyESPButton.TextColor3 = Color3.new(1, 1, 1)
-applyESPButton.Font = Enum.Font.GothamBold
-applyESPButton.TextSize = 18
-Instance.new("UICorner", applyESPButton).CornerRadius = UDim.new(0, 8)
-
--- Stop ESP Button
-local stopESPButton = Instance.new("TextButton", espFrame)
-stopESPButton.Size = UDim2.new(0.8, 0, 0, 40)
-stopESPButton.Position = UDim2.new(0.1, 0, 0, 420)
-stopESPButton.Text = "Désactiver ESP"
-stopESPButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-stopESPButton.TextColor3 = Color3.new(1, 1, 1)
-stopESPButton.Font = Enum.Font.GothamBold
-stopESPButton.TextSize = 18
-Instance.new("UICorner", stopESPButton).CornerRadius = UDim.new(0, 8)
-
--- ESP Functions
-local function clearESP()
-  for _, tag in pairs(espTags) do
-    if tag and tag.Parent then tag:Destroy() end
-  end
-  espTags = {}
-end
-
-local function shouldShowObject(obj)
+-- Fonction pour le spin attack (rotation modérée mais efficace)
+local function toggleSpinAttack()
   local char = player.Character
-  if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
-  
-  local distance = (obj.Position - char.HumanoidRootPart.Position).Magnitude
-  if distance > espSettings.viewRadius then return false end
-  
-  if espSettings.showAll then return true end
-  
-  -- Check if it's a player
-  local isPlayer = false
-  local currentObj = obj
-  while currentObj.Parent do
-    currentObj = currentObj.Parent
-    if Players:GetPlayerFromCharacter(currentObj) then
-      isPlayer = true
-      break
-    end
-  end
-  
-  if isPlayer and espSettings.showPlayers then return true end
-  if not isPlayer and espSettings.showObjects and obj.Transparency < 1 then return true end
-  if not isPlayer and espSettings.showInvisible and obj.Transparency >= 1 then return true end
-  
-  return false
-end
+  if not char then return end
 
-local function getObjectDisplayName(obj)
-  -- Get the real Roblox Studio name
-  local displayName = obj.Name
-  
-  -- Check if it's part of a player
-  local currentObj = obj
-  while currentObj.Parent do
-    currentObj = currentObj.Parent
-    local playerFromChar = Players:GetPlayerFromCharacter(currentObj)
-    if playerFromChar then
-      return "👤 " .. playerFromChar.Name .. " (" .. obj.Name .. ")"
-    end
-  end
-  
-  -- For regular objects, show full hierarchy path if useful
-  local parent = obj.Parent
-  if parent and parent ~= workspace and parent.Name ~= "Workspace" then
-    displayName = parent.Name .. " → " .. displayName
-  end
-  
-  -- Add material info for parts
-  if obj:IsA("BasePart") then
-    displayName = displayName .. "\n[" .. obj.Material.Name .. "]"
-    
-    -- Add transparency info
-    if obj.Transparency > 0 then
-      displayName = displayName .. " (α:" .. math.floor(obj.Transparency * 100) .. "%)"
-    end
-    
-    -- Add size for large objects
-    if obj.Size.Magnitude > 20 then
-      local sizeText = string.format("%.1f×%.1f×%.1f", obj.Size.X, obj.Size.Y, obj.Size.Z)
-      displayName = displayName .. "\n📏 " .. sizeText
-    end
-  end
-  
-  return displayName
-end
+  local root = char:FindFirstChild("HumanoidRootPart")
+  if not root then return end
 
-function updateESP()
-  clearESP()
-  
-  if not espSettings.enabled then return end
-  
-  for _, obj in pairs(workspace:GetDescendants()) do
-    if obj:IsA("BasePart") and shouldShowObject(obj) then
-      local billboard = Instance.new("BillboardGui")
-      billboard.Adornee = obj
-      billboard.Size = UDim2.new(0, 250, 0, 80)
-      billboard.StudsOffset = Vector3.new(0, obj.Size.Y/2 + 2, 0)
-      billboard.AlwaysOnTop = true
-      billboard.LightInfluence = 0
-      
-      -- Background frame
-      local bgFrame = Instance.new("Frame", billboard)
-      bgFrame.Size = UDim2.new(1, 0, 1, 0)
-      bgFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-      bgFrame.BackgroundTransparency = 0.3
-      bgFrame.BorderSizePixel = 0
-      Instance.new("UICorner", bgFrame).CornerRadius = UDim.new(0, 6)
-      
-      local label = Instance.new("TextLabel", bgFrame)
-      label.Size = UDim2.new(1, -10, 1, -10)
-      label.Position = UDim2.new(0, 5, 0, 5)
-      label.BackgroundTransparency = 1
-      label.Text = getObjectDisplayName(obj)
-      label.TextColor3 = Color3.new(1, 1, 1)
-      label.TextStrokeTransparency = 0
-      label.TextStrokeColor3 = Color3.new(0, 0, 0)
-      label.Font = Enum.Font.GothamBold
-      label.TextSize = 10
-      label.TextScaled = true
-      label.TextWrapped = true
-      
-      -- Distance indicator
-      local char = player.Character
-      if char and char:FindFirstChild("HumanoidRootPart") then
-        local distance = math.floor((obj.Position - char.HumanoidRootPart.Position).Magnitude)
-        label.Text = label.Text .. "\n📍 " .. distance .. " studs"
+  if isSpinAttackEnabled then
+    -- Activer le spin attack avec rotation modérée (réduite à 1000 pour être plus contrôlable)
+    local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
+    bodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
+    bodyAngularVelocity.AngularVelocity = Vector3.new(0, 1000, 0) -- Réduit de 628318 à 1000
+    bodyAngularVelocity.Parent = root
+
+    -- Stabiliser le personnage pour éviter qu'il soit propulsé
+    local bodyPosition = Instance.new("BodyPosition")
+    bodyPosition.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bodyPosition.Position = root.Position
+    bodyPosition.D = 1000 -- Amortissement
+    bodyPosition.P = 10000 -- Puissance
+    bodyPosition.Parent = root
+
+    -- Activer l'effet visuel seulement
+    for _, part in pairs(char:GetChildren()) do
+      if part:IsA("BasePart") then
+        part.Material = Enum.Material.Neon -- Effet visuel
+        -- Garder CanCollide false pour éviter l'auto-propulsion
+        if part.Name ~= "HumanoidRootPart" then
+          part.CanCollide = false
+        end
       end
-      
-      billboard.Parent = obj
-      table.insert(espTags, billboard)
     end
-  end
-end
 
--- ESP Button Functions
-applyESPButton.MouseButton1Click:Connect(function()
-  espSettings.enabled = true
-  updateESP()
-  espButton.Text = "🔍 ESP ON"
-  espButton.BackgroundColor3 = Color3.fromRGB(40, 180, 90)
-end)
+    -- Zone d'effet invisible pour affecter les autres joueurs
+    local effectPart = Instance.new("Part")
+    effectPart.Name = "SpinAttackEffect"
+    effectPart.Parent = workspace
+    effectPart.Anchored = true
+    effectPart.CanCollide = false
+    effectPart.Transparency = 1
+    effectPart.Size = Vector3.new(10, 10, 10)
+    effectPart.Shape = Enum.PartType.Ball
 
-stopESPButton.MouseButton1Click:Connect(function()
-  espSettings.enabled = false
-  clearESP()
-  espButton.Text = "ESP off"
-  espButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-end)
+    -- Maintenir la rotation ultra-rapide et l'effet
+    spinConnection = RunService.Stepped:Connect(function()
+      if root and root.Parent then
+        -- Maintenir la rotation
+        local currentAngularVelocity = root:FindFirstChildOfClass("BodyAngularVelocity")
+        if currentAngularVelocity then
+          currentAngularVelocity.AngularVelocity = Vector3.new(0, spinSpeed, 0)
+          currentAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
+        else
+          -- Recréer si détruit
+          local newBodyAngularVelocity = Instance.new("BodyAngularVelocity")
+          newBodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
+          newBodyAngularVelocity.AngularVelocity = Vector3.new(0, spinSpeed, 0)
+          newBodyAngularVelocity.Parent = root
+        end
 
--- Update ESP periodically when enabled
-spawn(function()
-  while true do
-    if espSettings.enabled then
-      updateESP()
-    end
-    wait(2) -- Update every 2 seconds
-  end
-end)
+        -- Maintenir la position stable
+        local currentBodyPosition = root:FindFirstChildOfClass("BodyPosition")
+        if currentBodyPosition then
+          currentBodyPosition.Position = root.Position
+        end
 
--- ESP Button now opens interface
-espButton.MouseButton1Click:Connect(function()
-  espFrame.Visible = true
-  espFrame.Size = UDim2.new(0, 0, 0, 0)
-  espFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-  
-  local openTween = TweenService:Create(
-    espFrame,
-    TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-    {
-      Size = UDim2.new(0, espFrameWidth, 0, espFrameHeight),
-      Position = UDim2.new(0.5, -espFrameWidth/2, 0.5, -espFrameHeight/2)
-    }
-  )
-  openTween:Play()
-end)
+        -- Positionner la zone d'effet
+        if effectPart and effectPart.Parent then
+          effectPart.Position = root.Position
 
--- Make ESP frame draggable (only on PC)
-if not isMobile then
-  makeDraggable(espFrame)
-end
+          -- Détecter et propulser les autres joueurs dans la zone
+          for _, otherPlayer in pairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and otherPlayer.Character then
+              local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+              if otherRoot then
+                local distance = (otherRoot.Position - root.Position).Magnitude
+                if distance <= 5 then -- Rayon d'effet de 5 studs
+                  -- Créer une force de propulsion
+                  local direction = (otherRoot.Position - root.Position).Unit
+                  local forceValue = 50 -- Force de propulsion
 
--- Boost Configuration Interface
-local boostFrameWidth = isMobile and math.min(screenSize.X * 0.9, 340) or 350
-local boostFrameHeight = isMobile and math.min(screenSize.Y * 0.8, 450) or 400
+                  -- Appliquer la force
+                  local bodyVelocity = otherRoot:FindFirstChild("TempSpinForce")
+                  if not bodyVelocity then
+                    bodyVelocity = Instance.new("BodyVelocity")
+                    bodyVelocity.Name = "TempSpinForce"
+                    bodyVelocity.Parent = otherRoot
+                  end
+                  bodyVelocity.MaxForce = Vector3.new(math.huge, 0, math.huge)
+                  bodyVelocity.Velocity = direction * forceValue
 
-local boostFrame = Instance.new("Frame", gui)
-boostFrame.Size = UDim2.new(0, boostFrameWidth, 0, boostFrameHeight)
-boostFrame.Position = UDim2.new(0.5, -boostFrameWidth/2, 0.5, -boostFrameHeight/2)
-boostFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-boostFrame.BorderSizePixel = 0
-boostFrame.Visible = false
-Instance.new("UICorner", boostFrame).CornerRadius = UDim.new(0, isMobile and 16 or 12)
-
--- Boost Frame Title
-local boostTitle = Instance.new("TextLabel", boostFrame)
-boostTitle.Size = UDim2.new(1, 0, 0, isMobile and 50 or 40)
-boostTitle.Position = UDim2.new(0, 0, 0, 0)
-boostTitle.Text = "Boost ton père pd"
-boostTitle.BackgroundTransparency = 1
-boostTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-boostTitle.Font = Enum.Font.GothamBold
-boostTitle.TextSize = isMobile and 20 or 22
-boostTitle.TextScaled = isMobile
-
--- Close Button (improved for mobile)
-local closeButtonSize = isMobile and 40 or 30
-local closeButton = Instance.new("TextButton", boostFrame)
-closeButton.Size = UDim2.new(0, closeButtonSize, 0, closeButtonSize)
-closeButton.Position = UDim2.new(1, -closeButtonSize - 5, 0, 5)
-closeButton.Text = "✕"
-closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-closeButton.TextColor3 = Color3.new(1, 1, 1)
-closeButton.Font = Enum.Font.GothamBold
-closeButton.TextSize = isMobile and 20 or 16
-Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, isMobile and 8 or 4)
-
--- Enhanced close button animation
-closeButton.MouseButton1Click:Connect(function()
-  local closeTween = TweenService:Create(
-    boostFrame,
-    TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In),
-    {Size = UDim2.new(0, 0, 0, 0)}
-  )
-  closeTween:Play()
-  closeTween.Completed:Connect(function()
-    boostFrame.Visible = false
-    boostFrame.Size = UDim2.new(0, boostFrameWidth, 0, boostFrameHeight)
-  end)
-end)
-
--- Speed Slider
-local speedLabel = Instance.new("TextLabel", boostFrame)
-speedLabel.Size = UDim2.new(1, 0, 0, 25)
-speedLabel.Position = UDim2.new(0, 0, 0, 60)
-speedLabel.Text = "Vitesse"
-speedLabel.BackgroundTransparency = 1
-speedLabel.TextColor3 = Color3.new(1, 1, 1)
-speedLabel.Font = Enum.Font.Gotham
-speedLabel.TextSize = 16
-
-local speedSliderBar = Instance.new("Frame", boostFrame)
-speedSliderBar.Size = UDim2.new(0.8, 0, 0, 6)
-speedSliderBar.Position = UDim2.new(0.1, 0, 0, 90)
-speedSliderBar.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-Instance.new("UICorner", speedSliderBar).CornerRadius = UDim.new(0, 3)
-
-local speedKnob = Instance.new("Frame", speedSliderBar)
-speedKnob.Size = UDim2.new(0, 14, 0, 20)
-speedKnob.Position = UDim2.new(0.2, -7, -0.7, 0)
-speedKnob.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-Instance.new("UICorner", speedKnob).CornerRadius = UDim.new(1, 0)
-
-local speedValueLabel = Instance.new("TextLabel", boostFrame)
-speedValueLabel.Size = UDim2.new(1, 0, 0, 25)
-speedValueLabel.Position = UDim2.new(0, 0, 0, 115)
-speedValueLabel.BackgroundTransparency = 1
-speedValueLabel.TextColor3 = Color3.new(1, 1, 1)
-speedValueLabel.TextSize = 14
-speedValueLabel.Font = Enum.Font.Gotham
-speedValueLabel.Text = "Vitesse : 50"
-
--- Jump Slider
-local jumpLabel = Instance.new("TextLabel", boostFrame)
-jumpLabel.Size = UDim2.new(1, 0, 0, 25)
-jumpLabel.Position = UDim2.new(0, 0, 0, 150)
-jumpLabel.Text = "Hauteur de saut"
-jumpLabel.BackgroundTransparency = 1
-jumpLabel.TextColor3 = Color3.new(1, 1, 1)
-jumpLabel.Font = Enum.Font.Gotham
-jumpLabel.TextSize = 16
-
-local jumpSliderBar = Instance.new("Frame", boostFrame)
-jumpSliderBar.Size = UDim2.new(0.8, 0, 0, 6)
-jumpSliderBar.Position = UDim2.new(0.1, 0, 0, 180)
-jumpSliderBar.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-Instance.new("UICorner", jumpSliderBar).CornerRadius = UDim.new(0, 3)
-
-local jumpKnob = Instance.new("Frame", jumpSliderBar)
-jumpKnob.Size = UDim2.new(0, 14, 0, 20)
-jumpKnob.Position = UDim2.new(0.0, -7, -0.7, 0)
-jumpKnob.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-Instance.new("UICorner", jumpKnob).CornerRadius = UDim.new(1, 0)
-
-local jumpValueLabel = Instance.new("TextLabel", boostFrame)
-jumpValueLabel.Size = UDim2.new(1, 0, 0, 25)
-jumpValueLabel.Position = UDim2.new(0, 0, 0, 205)
-jumpValueLabel.BackgroundTransparency = 1
-jumpValueLabel.TextColor3 = Color3.new(1, 1, 1)
-jumpValueLabel.TextSize = 14
-jumpValueLabel.Font = Enum.Font.Gotham
-jumpValueLabel.Text = "Hauteur : 50"
-
--- Infinite Jump Toggle
-local infiniteJumpToggle = Instance.new("TextButton", boostFrame)
-infiniteJumpToggle.Size = UDim2.new(0.8, 0, 0, 35)
-infiniteJumpToggle.Position = UDim2.new(0.1, 0, 0, 240)
-infiniteJumpToggle.Text = "Saut Infini: OFF"
-infiniteJumpToggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-infiniteJumpToggle.TextColor3 = Color3.new(1, 1, 1)
-infiniteJumpToggle.Font = Enum.Font.GothamBold
-infiniteJumpToggle.TextSize = 16
-Instance.new("UICorner", infiniteJumpToggle).CornerRadius = UDim.new(0, 8)
-
--- Apply Boost Button
-local applyBoostButton = Instance.new("TextButton", boostFrame)
-applyBoostButton.Size = UDim2.new(0.8, 0, 0, 40)
-applyBoostButton.Position = UDim2.new(0.1, 0, 0, 290)
-applyBoostButton.Text = "Activer Boost"
-applyBoostButton.BackgroundColor3 = Color3.fromRGB(40, 180, 90)
-applyBoostButton.TextColor3 = Color3.new(1, 1, 1)
-applyBoostButton.Font = Enum.Font.GothamBold
-applyBoostButton.TextSize = 18
-Instance.new("UICorner", applyBoostButton).CornerRadius = UDim.new(0, 8)
-
--- Stop Boost Button
-local stopBoostButton = Instance.new("TextButton", boostFrame)
-stopBoostButton.Size = UDim2.new(0.8, 0, 0, 40)
-stopBoostButton.Position = UDim2.new(0.1, 0, 0, 340)
-stopBoostButton.Text = "Désactiver Boost"
-stopBoostButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-stopBoostButton.TextColor3 = Color3.new(1, 1, 1)
-stopBoostButton.Font = Enum.Font.GothamBold
-stopBoostButton.TextSize = 18
-Instance.new("UICorner", stopBoostButton).CornerRadius = UDim.new(0, 8)
-
--- Boost Variables
-local currentSpeed = 50
-local currentJumpPower = 50
-local infiniteJumpEnabled = false
-local boostActive = false
-local originalSpeed = 16
-local originalJumpPower = 50
-local infiniteJumpConnection = nil
-
--- Speed Slider Logic
-local isDraggingSpeedSlider = false
-
-local function updateSpeedSlider(inputX)
-  local relX = math.clamp(inputX - speedSliderBar.AbsolutePosition.X, 0, speedSliderBar.AbsoluteSize.X)
-  local percent = relX / speedSliderBar.AbsoluteSize.X
-  currentSpeed = math.floor(16 + (200 - 16) * percent + 0.5)
-  speedKnob.Position = UDim2.new(percent, -7, -0.7, 0)
-  speedValueLabel.Text = "Vitesse : " .. currentSpeed
-end
-
-speedSliderBar.InputBegan:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-    isDraggingSpeedSlider = true
-    updateSpeedSlider(input.Position.X)
-    input.UserInputService = nil -- Prevent event propagation
-  end
-end)
-
-speedSliderBar.InputEnded:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-    isDraggingSpeedSlider = false
-  end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-  if isDraggingSpeedSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-    updateSpeedSlider(input.Position.X)
-  end
-end)
-
--- Jump Slider Logic
-local isDraggingJumpSlider = false
-
-local function updateJumpSlider(inputX)
-  local relX = math.clamp(inputX - jumpSliderBar.AbsolutePosition.X, 0, jumpSliderBar.AbsoluteSize.X)
-  local percent = relX / jumpSliderBar.AbsoluteSize.X
-  currentJumpPower = math.floor(50 + (200 - 50) * percent + 0.5)
-  jumpKnob.Position = UDim2.new(percent, -7, -0.7, 0)
-  jumpValueLabel.Text = "Hauteur : " .. currentJumpPower
-end
-
-jumpSliderBar.InputBegan:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-    isDraggingJumpSlider = true
-    updateJumpSlider(input.Position.X)
-    input.UserInputService = nil -- Prevent event propagation
-  end
-end)
-
-jumpSliderBar.InputEnded:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-    isDraggingJumpSlider = false
-  end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-  if isDraggingJumpSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-    updateJumpSlider(input.Position.X)
-  end
-end)
-
--- Infinite Jump Toggle
-infiniteJumpToggle.MouseButton1Click:Connect(function()
-  infiniteJumpEnabled = not infiniteJumpEnabled
-  infiniteJumpToggle.Text = infiniteJumpEnabled and " Saut Infini: ON" or " Saut Infini: OFF"
-  infiniteJumpToggle.BackgroundColor3 = infiniteJumpEnabled and Color3.fromRGB(40, 180, 90) or Color3.fromRGB(200, 50, 50)
-end)
-
--- Apply Boost Function
-local function applyBoost()
-  local char = player.Character or player.CharacterAdded:Wait()
-  local humanoid = char:FindFirstChildOfClass("Humanoid")
-  if not humanoid then return end
-
-  -- Store original values
-  if not boostActive then
-    originalSpeed = humanoid.WalkSpeed
-    originalJumpPower = humanoid.JumpPower
-  end
-
-  -- Apply boost
-  humanoid.WalkSpeed = currentSpeed
-  humanoid.JumpPower = currentJumpPower
-  boostActive = true
-
-  -- Infinite Jump
-  if infiniteJumpEnabled and not infiniteJumpConnection then
-    infiniteJumpConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-      if gameProcessed then return end
-      
-      -- Handle both keyboard space and mobile jump
-      local shouldJump = false
-      if input.KeyCode == Enum.KeyCode.Space then
-        shouldJump = true
-      elseif input.UserInputType == Enum.UserInputType.Touch then
-        -- For mobile, detect tap in jump area (optional - you can remove this if too sensitive)
-        shouldJump = true
-      end
-      
-      if shouldJump then
-        local character = player.Character
-        local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        
-        if humanoidRootPart and humanoid then
-          -- Use BodyVelocity for better jump control
-          local bodyVelocity = Instance.new("BodyVelocity")
-          bodyVelocity.MaxForce = Vector3.new(0, math.huge, 0)
-          bodyVelocity.Velocity = Vector3.new(0, currentJumpPower * 1.2, 0) -- Slightly higher for infinite jump
-          bodyVelocity.Parent = humanoidRootPart
-          
-          -- Clean up after short time
-          game:GetService("Debris"):AddItem(bodyVelocity, 0.3)
-          
-          -- Alternative method using Humanoid state
-          humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                  -- Supprimer la force après un court moment
+                  game:GetService("Debris"):AddItem(bodyVelocity, 0.1)
+                end
+              end
+            end
+          end
         end
       end
     end)
-  elseif not infiniteJumpEnabled and infiniteJumpConnection then
-    infiniteJumpConnection:Disconnect()
-    infiniteJumpConnection = nil
+  else
+    -- Désactiver le spin attack
+    if spinConnection then
+      spinConnection:Disconnect()
+      spinConnection = nil
+    end
+
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+      for _, obj in pairs(root:GetChildren()) do
+        if obj:IsA("BodyAngularVelocity") or obj:IsA("BodyPosition") then
+          obj:Destroy()
+        end
+      end
+    end
+
+    -- Supprimer la zone d'effet
+    local effectPart = workspace:FindFirstChild("SpinAttackEffect")
+    if effectPart then
+      effectPart:Destroy()
+    end
+
+    -- Restaurer l'apparence normale
+    for _, part in pairs(char:GetChildren()) do
+      if part:IsA("BasePart") then
+        part.Material = Enum.Material.Plastic
+        if part.Name ~= "HumanoidRootPart" then
+          part.CanCollide = false
+        end
+      end
+    end
   end
 end
 
--- Stop Boost Function
-local function stopBoost()
-  local char = player.Character or player.CharacterAdded:Wait()
+-- Fonction pour activer/désactiver l'anti-fall
+local function toggleAntiFall()
+  local char = player.Character
+  if not char then return end
+
   local humanoid = char:FindFirstChildOfClass("Humanoid")
-  if humanoid then
-    humanoid.WalkSpeed = originalSpeed
-    humanoid.JumpPower = originalJumpPower
+  if not humanoid then return end
+
+  if isAntiFallEnabled then
+    -- Activer l'anti-fall
+    antiFallConnection = RunService.Heartbeat:Connect(function()
+      local currentChar = player.Character
+      if currentChar then
+        local currentHumanoid = currentChar:FindFirstChildOfClass("Humanoid")
+        if currentHumanoid then
+          local currentState = currentHumanoid:GetState()
+
+          -- Détecter les états de chute
+          if currentState == Enum.HumanoidStateType.Freefall or 
+             currentState == Enum.HumanoidStateType.FallingDown or
+             currentState == Enum.HumanoidStateType.Ragdoll then
+
+            -- Remettre debout immédiatement
+            currentHumanoid:ChangeState(Enum.HumanoidStateType.Running)
+
+            -- S'assurer que le personnage est stable
+            local root = currentChar:FindFirstChild("HumanoidRootPart")
+            if root then
+              root.Velocity = Vector3.new(root.Velocity.X, 0, root.Velocity.Z)
+            end
+          end
+        end
+      end
+    end)
+  else
+    -- Désactiver l'anti-fall
+    if antiFallConnection then
+      antiFallConnection:Disconnect()
+      antiFallConnection = nil
+    end
   end
-  
-  -- Properly clean up infinite jump
+end
+
+-- Fonction pour activer/désactiver l'anti-void
+local function toggleAntiVoid()
+  local char = player.Character
+  if not char then return end
+
+  if isAntiVoidEnabled then
+    -- Activer l'anti-void
+    antiVoidConnection = RunService.Heartbeat:Connect(function()
+      local currentChar = player.Character
+      if currentChar then
+        local root = currentChar:FindFirstChild("HumanoidRootPart")
+        if root then
+          -- Vérifier si le joueur est tombé sous la map
+          if root.Position.Y < voidThreshold then
+            -- Téléporter vers une position sûre (spawn ou dernière position connue)
+            local spawnLocation = workspace:FindFirstChild("SpawnLocation")
+            if spawnLocation then
+              root.CFrame = spawnLocation.CFrame + Vector3.new(0, 5, 0)
+              print("Anti-void activé! Téléporté au spawn.")
+            else
+              -- Si pas de spawn, téléporter à une hauteur sûre
+              root.CFrame = CFrame.new(root.Position.X, 100, root.Position.Z)
+              print("Anti-void activé! Téléporté en hauteur.")
+            end
+
+            -- Réinitialiser la vélocité pour éviter de continuer à tomber
+            root.Velocity = Vector3.new(0, 0, 0)
+          end
+        end
+      end
+    end)
+    print("Anti-void activé! Seuil: Y < " .. voidThreshold)
+  else
+    -- Désactiver l'anti-void
+    if antiVoidConnection then
+      antiVoidConnection:Disconnect()
+      antiVoidConnection = nil
+    end
+    print("Anti-void désactivé!")
+  end
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- Fonctions ESP avancées
+local function createPlayerHighlight(targetPlayer)
+  if not targetPlayer.Character then return end
+
+  local highlight = Instance.new("Highlight")
+  highlight.Parent = targetPlayer.Character
+  highlight.FillColor = espColor
+  highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+  highlight.FillTransparency = 0.5
+  highlight.OutlineTransparency = 0
+  highlight.Adornee = targetPlayer.Character
+
+  espObjects[targetPlayer.Name .. "_highlight"] = highlight
+end
+
+local function createPlayerTracer(targetPlayer)
+  if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+  if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+
+  local camera = workspace.CurrentCamera
+  local targetRoot = targetPlayer.Character.HumanoidRootPart
+  local myRoot = player.Character.HumanoidRootPart
+
+  -- Calculer la distance
+  local distance = (targetRoot.Position - myRoot.Position).Magnitude
+  if distance > tracerDistance then return end
+
+  -- Créer le tracer (ligne)
+  local beam = Instance.new("Beam")
+  local attachment0 = Instance.new("Attachment")
+  local attachment1 = Instance.new("Attachment")
+
+  attachment0.Parent = myRoot
+  attachment1.Parent = targetRoot
+
+  beam.Attachment0 = attachment0
+  beam.Attachment1 = attachment1
+  beam.Color = ColorSequence.new(espColor)
+  beam.Width0 = 0.5
+  beam.Width1 = 0.5
+  beam.Transparency = NumberSequence.new(0.3)
+  beam.Parent = workspace
+
+  espObjects[targetPlayer.Name .. "_tracer"] = {beam, attachment0, attachment1}
+end
+
+local function createPlayerNametag(targetPlayer)
+  if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Head") then return end
+
+  local head = targetPlayer.Character.Head
+
+  -- Créer le BillboardGui pour le nametag
+  local billboard = Instance.new("BillboardGui")
+  billboard.Size = UDim2.new(0, 200, 0, 50)
+  billboard.StudsOffset = Vector3.new(0, 3, 0)
+  billboard.Parent = head
+
+  -- Nom du joueur
+  local nameLabel = Instance.new("TextLabel")
+  nameLabel.Size = UDim2.new(1, 0, 0.6, 0)
+  nameLabel.Position = UDim2.new(0, 0, 0, 0)
+  nameLabel.BackgroundTransparency = 1
+  nameLabel.Text = targetPlayer.DisplayName .. " (@" .. targetPlayer.Name .. ")"
+  nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+  nameLabel.TextStrokeTransparency = 0
+  nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+  nameLabel.TextScaled = true
+  nameLabel.Font = Enum.Font.GothamBold
+  nameLabel.Parent = billboard
+
+  -- Distance (si activée)
+  local distanceLabel = Instance.new("TextLabel")
+  distanceLabel.Size = UDim2.new(1, 0, 0.4, 0)
+  distanceLabel.Position = UDim2.new(0, 0, 0.6, 0)
+  distanceLabel.BackgroundTransparency = 1
+  distanceLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+  distanceLabel.TextStrokeTransparency = 0
+  distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+  distanceLabel.TextScaled = true
+  distanceLabel.Font = Enum.Font.Gotham
+  distanceLabel.Parent = billboard
+
+  espObjects[targetPlayer.Name .. "_nametag"] = billboard
+  espObjects[targetPlayer.Name .. "_distance"] = distanceLabel
+end
+
+local function updatePlayerDistance(targetPlayer)
+  if not isDistanceEnabled then return end
+  if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+  if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+
+  local distanceLabel = espObjects[targetPlayer.Name .. "_distance"]
+  if distanceLabel then
+    local distance = (targetPlayer.Character.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+    distanceLabel.Text = math.floor(distance) .. " studs"
+  end
+end
+
+local function createESPForPlayer(targetPlayer)
+  if targetPlayer == player then return end
+
+  if isHighlightEnabled then
+    createPlayerHighlight(targetPlayer)
+  end
+
+  if isTracersEnabled then
+    createPlayerTracer(targetPlayer)
+  end
+
+  if isNametagsEnabled then
+    createPlayerNametag(targetPlayer)
+  end
+end
+
+local function removeESPForPlayer(targetPlayer)
+  -- Supprimer highlight
+  local highlight = espObjects[targetPlayer.Name .. "_highlight"]
+  if highlight then
+    highlight:Destroy()
+    espObjects[targetPlayer.Name .. "_highlight"] = nil
+  end
+
+  -- Supprimer tracer
+  local tracer = espObjects[targetPlayer.Name .. "_tracer"]
+  if tracer then
+    for _, obj in pairs(tracer) do
+      if obj and obj.Parent then
+        obj:Destroy()
+      end
+    end
+    espObjects[targetPlayer.Name .. "_tracer"] = nil
+  end
+
+  -- Supprimer nametag
+  local nametag = espObjects[targetPlayer.Name .. "_nametag"]
+  if nametag then
+    nametag:Destroy()
+    espObjects[targetPlayer.Name .. "_nametag"] = nil
+    espObjects[targetPlayer.Name .. "_distance"] = nil
+  end
+end
+
+local function toggleESP()
+  if isEspEnabled then
+    -- Activer ESP
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+      createESPForPlayer(targetPlayer)
+    end
+
+    -- Connexion pour nouveaux joueurs
+    espConnections.playerAdded = Players.PlayerAdded:Connect(function(targetPlayer)
+      targetPlayer.CharacterAdded:Connect(function()
+        task.wait(1)
+        if isEspEnabled then
+          createESPForPlayer(targetPlayer)
+        end
+      end)
+    end)
+
+    -- Connexion pour joueurs qui partent
+    espConnections.playerRemoving = Players.PlayerRemoving:Connect(function(targetPlayer)
+      removeESPForPlayer(targetPlayer)
+    end)
+
+    -- Mise à jour continue des tracers et distances
+    espConnections.update = RunService.Heartbeat:Connect(function()
+      for _, targetPlayer in pairs(Players:GetPlayers()) do
+        if targetPlayer ~= player and targetPlayer.Character then
+          -- Mettre à jour les tracers
+          if isTracersEnabled then
+            local tracer = espObjects[targetPlayer.Name .. "_tracer"]
+            if not tracer and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+              createPlayerTracer(targetPlayer)
+            end
+          end
+
+          -- Mettre à jour les distances
+          updatePlayerDistance(targetPlayer)
+        end
+      end
+    end)
+
+    print("ESP activé - Highlighting, tracers et nametags activés!")
+  else
+    -- Désactiver ESP
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+      removeESPForPlayer(targetPlayer)
+    end
+
+    -- Déconnecter tous les événements
+    for _, connection in pairs(espConnections) do
+      if connection then
+        connection:Disconnect()
+      end
+    end
+    espConnections = {}
+
+    print("ESP désactivé!")
+  end
+end
+
+-- Fonction pour se téléporter sur tous les joueurs actifs
+local function toggleTpToPlayers()
+  if isTpToPlayersEnabled then
+    tpToPlayersConnection = task.spawn(function()
+      while isTpToPlayersEnabled do
+        local char = player.Character
+        if char then
+          local root = char:FindFirstChild("HumanoidRootPart")
+          if root then
+            -- Trouver tous les joueurs actifs
+            local players = {}
+            for _, targetPlayer in pairs(Players:GetPlayers()) do
+              if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                table.insert(players, targetPlayer)
+              end
+            end
+
+            if #players > 0 then
+              local randomPlayer = players[math.random(1, #players)]
+              if randomPlayer and randomPlayer.Character then
+                local targetRoot = randomPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if targetRoot then
+                  root.CFrame = targetRoot.CFrame + Vector3.new(math.random(-5, 5), 0, math.random(-5, 5))
+                end
+              end
+            end
+          end
+        end
+        task.wait(2) -- Téléportation toutes les 2 secondes
+      end
+    end)
+  else
+    if tpToPlayersConnection then
+      task.cancel(tpToPlayersConnection)
+      tpToPlayersConnection = nil
+    end
+  end
+end
+
+-- Fonction pour rotation lente contrôlée (25 tours/sec)
+local function toggleSlowSpin()
+  local char = player.Character
+  if not char then return end
+
+  local root = char:FindFirstChild("HumanoidRootPart")
+  if not root then return end
+
+  if isSlowSpinEnabled then
+    -- Activer rotation contrôlée
+    local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
+    bodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
+    bodyAngularVelocity.AngularVelocity = Vector3.new(0, slowSpinSpeed, 0)
+    bodyAngularVelocity.Parent = root
+
+    slowSpinConnection = RunService.Heartbeat:Connect(function()
+      if root and root.Parent then
+        local currentAngularVelocity = root:FindFirstChildOfClass("BodyAngularVelocity")
+        if currentAngularVelocity then
+          currentAngularVelocity.AngularVelocity = Vector3.new(0, slowSpinSpeed, 0)
+        else
+          local newBodyAngularVelocity = Instance.new("BodyAngularVelocity")
+          newBodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
+          newBodyAngularVelocity.AngularVelocity = Vector3.new(0, slowSpinSpeed, 0)
+          newBodyAngularVelocity.Parent = root
+        end
+      end
+    end)
+    print("Rotation contrôlée activée: 25 tours/seconde")
+  else
+    -- Désactiver rotation
+    if slowSpinConnection then
+      slowSpinConnection:Disconnect()
+      slowSpinConnection = nil
+    end
+
+    if root then
+      for _, obj in pairs(root:GetChildren()) do
+        if obj:IsA("BodyAngularVelocity") then
+          obj:Destroy()
+        end
+      end
+    end
+    print("Rotation contrôlée désactivée")
+  end
+end
+
+-- Fonction pour screen shake (secouer l'écran)
+local function toggleScreenShake()
+  if isScreenShakeEnabled then
+    local camera = workspace.CurrentCamera
+    screenShakeConnection = RunService.Heartbeat:Connect(function()
+      if camera then
+        local shakeIntensity = 2
+        local randomX = (math.random() - 0.5) * shakeIntensity
+        local randomY = (math.random() - 0.5) * shakeIntensity
+        local randomZ = (math.random() - 0.5) * shakeIntensity
+        
+        camera.CFrame = camera.CFrame * CFrame.new(randomX, randomY, randomZ)
+      end
+    end)
+    print("Screen shake activé!")
+  else
+    if screenShakeConnection then
+      screenShakeConnection:Disconnect()
+      screenShakeConnection = nil
+    end
+    print("Screen shake désactivé!")
+  end
+end
+
+-- Fonction pour spam de saut
+local function toggleJumpSpam()
+  if isJumpSpamEnabled then
+    jumpSpamConnection = task.spawn(function()
+      while isJumpSpamEnabled do
+        local char = player.Character
+        if char then
+          local humanoid = char:FindFirstChildOfClass("Humanoid")
+          if humanoid then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+          end
+        end
+        task.wait(0.1) -- Saut toutes les 0.1 secondes
+      end
+    end)
+    print("Jump spam activé!")
+  else
+    if jumpSpamConnection then
+      task.cancel(jumpSpamConnection)
+      jumpSpamConnection = nil
+    end
+    print("Jump spam désactivé!")
+  end
+end
+
+-- Fonction pour chat spam
+local function toggleChatSpam()
+  if isChatSpamEnabled then
+    local messages = {
+      "TROLL MODE ACTIVATED! 🔥",
+      "Script by Pro Hacker 💀",
+      "Get rekt! 😈",
+      "Ez Ez Ez 🎮",
+      "Skill issue? 🤔",
+      "Too easy! 💪",
+      "GG EZ CLAP 👏",
+      "Noob detected! 🤡"
+    }
+    
+    chatSpamConnection = task.spawn(function()
+      while isChatSpamEnabled do
+        local randomMessage = messages[math.random(1, #messages)]
+        pcall(function()
+          game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.SayMessageRequest:FireServer(randomMessage, "All")
+        end)
+        task.wait(3) -- Message toutes les 3 secondes
+      end
+    end)
+    print("Chat spam activé!")
+  else
+    if chatSpamConnection then
+      task.cancel(chatSpamConnection)
+      chatSpamConnection = nil
+    end
+    print("Chat spam désactivé!")
+  end
+end
+
+-- Fonction pour lag bomb (créer du lag)
+local function toggleLagBomb()
+  if isLagBombEnabled then
+    lagBombConnection = task.spawn(function()
+      while isLagBombEnabled do
+        -- Créer plusieurs parties invisibles pour lag
+        for i = 1, 20 do
+          local part = Instance.new("Part")
+          part.Parent = workspace
+          part.Anchored = true
+          part.CanCollide = false
+          part.Transparency = 1
+          part.Size = Vector3.new(0.1, 0.1, 0.1)
+          part.Position = Vector3.new(math.random(-100, 100), math.random(0, 100), math.random(-100, 100))
+          
+          -- Supprimer après 1 seconde
+          game:GetService("Debris"):AddItem(part, 1)
+        end
+        task.wait(0.5)
+      end
+    end)
+    print("Lag bomb activé! (Attention: peut affecter vos performances)")
+  else
+    if lagBombConnection then
+      task.cancel(lagBombConnection)
+      lagBombConnection = nil
+    end
+    print("Lag bomb désactivé!")
+  end
+end
+
+-- Fonction pour flip camera
+local function toggleCameraFlip()
+  if isCameraFlipEnabled then
+    local camera = workspace.CurrentCamera
+    cameraFlipConnection = RunService.Heartbeat:Connect(function()
+      if camera then
+        -- Rotation aléatoire de la caméra
+        local randomRoll = math.sin(tick() * 5) * 45 -- Oscillation entre -45 et 45 degrés
+        camera.CFrame = camera.CFrame * CFrame.Angles(0, 0, math.rad(randomRoll))
+      end
+    end)
+    print("Camera flip activé!")
+  else
+    if cameraFlipConnection then
+      cameraFlipConnection:Disconnect()
+      cameraFlipConnection = nil
+    end
+    print("Camera flip désactivé!")
+  end
+end
+
+-- Interface Rayfield
+local Window = Rayfield:CreateWindow({
+   Name = "Steal A Dungeon",
+   LoadingTitle = "Chargement...",
+   LoadingSubtitle = "by Script",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = nil,
+      FileName = "MultifunctionalScript"
+   },
+   Discord = {
+      Enabled = false,
+      Invite = "noinvitelink",
+      RememberJoins = true
+   },
+   KeySystem = false,
+   KeySettings = {
+      Title = "Untitled",
+      Subtitle = "Key System",
+      Note = "No method of obtaining the key is provided",
+      FileName = "Key",
+      SaveKey = true,
+      GrabKeyFromSite = false,
+      Key = {"Hello"}
+   }
+})
+
+-- Onglet Téléportation
+local TeleportTab = Window:CreateTab("Téléportation", 4483362458)
+
+local DistanceSlider = TeleportTab:CreateSlider({
+   Name = "Distance de téléportation",
+   Range = {5, 100},
+   Increment = 1,
+   Suffix = "studs",
+   CurrentValue = 15,
+   Flag = "DistanceSlider",
+   Callback = function(Value)
+      currentDistance = Value
+      print("Distance de téléportation: " .. Value .. " studs")
+   end,
+})
+
+local ResetDistanceButton = TeleportTab:CreateButton({
+   Name = "Reset distance (15 studs)",
+   Callback = function()
+      currentDistance = 15
+      DistanceSlider:Set(15)
+      print("Distance de téléportation remise à 15 studs")
+   end,
+})
+
+local TeleportButton = TeleportTab:CreateButton({
+   Name = "Se téléporter",
+   Callback = function()
+      teleport()
+      print("Téléportation effectuée! Distance: " .. currentDistance .. " studs")
+   end,
+})
+
+local VoidThresholdSlider = TeleportTab:CreateSlider({
+   Name = "Seuil anti-void (position Y)",
+   Range = {-1000, 0},
+   Increment = 50,
+   Suffix = "Y",
+   CurrentValue = -500,
+   Flag = "VoidThresholdSlider",
+   Callback = function(Value)
+      voidThreshold = Value
+      print("Seuil anti-void mis à jour: Y < " .. Value)
+   end,
+})
+
+local AntiVoidToggle = TeleportTab:CreateToggle({
+   Name = "Anti-void (éviter de tomber sous la map)",
+   CurrentValue = false,
+   Flag = "AntiVoidToggle",
+   Callback = function(Value)
+      isAntiVoidEnabled = Value
+      toggleAntiVoid()
+   end,
+})
+
+local AntiVoidInfo = TeleportTab:CreateParagraph({
+   Title = "Info Anti-void",
+   Content = "L'anti-void détecte quand vous tombez sous la map (en dessous du seuil Y) et vous téléporte automatiquement au spawn ou en sécurité."
+})
+
+-- Onglet Boost
+local BoostTab = Window:CreateTab("Boost", 4483362458)
+
+local SpeedSlider = BoostTab:CreateSlider({
+   Name = "Vitesse de marche",
+   Range = {16, 200},
+   Increment = 1,
+   Suffix = "studs/s",
+   CurrentValue = 16,
+   Flag = "SpeedSlider",
+   Callback = function(Value)
+      walkSpeedBoost = Value
+      if isSpeedEnabled then
+        toggleSpeed()
+      end
+   end,
+})
+
+local SpeedToggle = BoostTab:CreateToggle({
+   Name = "Activer boost de vitesse",
+   CurrentValue = false,
+   Flag = "SpeedToggle",
+   Callback = function(Value)
+      isSpeedEnabled = Value
+      toggleSpeed()
+   end,
+})
+
+local JumpSlider = BoostTab:CreateSlider({
+   Name = "Puissance de saut",
+   Range = {50, 300},
+   Increment = 1,
+   Suffix = "power",
+   CurrentValue = 50,
+   Flag = "JumpSlider",
+   Callback = function(Value)
+      jumpPowerBoost = Value
+      if isJumpEnabled then
+        toggleJump()
+      end
+   end,
+})
+
+local JumpToggle = BoostTab:CreateToggle({
+   Name = "Activer boost de saut",
+   CurrentValue = false,
+   Flag = "JumpToggle",
+   Callback = function(Value)
+      isJumpEnabled = Value
+      toggleJump()
+   end,
+})
+
+local infiniteJumpConnection = nil
+
+local InfiniteJumpToggle = BoostTab:CreateToggle({
+   Name = "Saut infini",
+   CurrentValue = false,
+   Flag = "InfiniteJump",
+   Callback = function(Value)
+      if Value then
+        infiniteJumpConnection = UserInputService.JumpRequest:Connect(function()
+          local char = player.Character
+          if char then
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+              humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+          end
+        end)
+      else
+        if infiniteJumpConnection then
+          infiniteJumpConnection:Disconnect()
+          infiniteJumpConnection = nil
+        end
+      end
+   end,
+})
+
+local NoClipToggle = BoostTab:CreateToggle({
+   Name = "NoClip",
+   CurrentValue = false,
+   Flag = "NoClipToggle",
+   Callback = function(Value)
+      isNoClipEnabled = Value
+      toggleNoClip()
+   end,
+})
+
+local InvisibilityToggle = BoostTab:CreateToggle({
+   Name = "Invisibilité",
+   CurrentValue = false,
+   Flag = "InvisibilityToggle",
+   Callback = function(Value)
+      isInvisible = Value
+      toggleInvisibility()
+   end,
+})
+
+-- Onglet Fly
+local FlyTab = Window:CreateTab("Fly", 4483362458)
+
+local FlySpeedSlider = FlyTab:CreateSlider({
+   Name = "Vitesse de vol",
+   Range = {10, 200},
+   Increment = 1,
+   Suffix = "studs/s",
+   CurrentValue = 50,
+   Flag = "FlySpeedSlider",
+   Callback = function(Value)
+      flySpeed = Value
+   end,
+})
+
+local FlyToggle = FlyTab:CreateToggle({
+   Name = "Activer le vol",
+   CurrentValue = false,
+   Flag = "FlyToggle",
+   Callback = function(Value)
+      isFlying = Value
+      toggleFly()
+   end,
+})
+
+local FlyInfo = FlyTab:CreateParagraph({
+   Title = "Contrôles de vol",
+   Content = "PC: WASD - Déplacement (suit la caméra)\nEspace - Monter\nShift Gauche - Descendre\n\nMobile: Joystick tactile pour bouger\nBoutons ↑↓ pour monter/descendre"
+})
+
+-- Onglet ESP
+local ESPTab = Window:CreateTab("ESP", 4483362458)
+
+local ESPToggle = ESPTab:CreateToggle({
+   Name = "Activer ESP Master",
+   CurrentValue = false,
+   Flag = "ESPToggle",
+   Callback = function(Value)
+      isEspEnabled = Value
+      toggleESP()
+   end,
+})
+
+local HighlightToggle = ESPTab:CreateToggle({
+   Name = "Highlighting joueurs",
+   CurrentValue = false,
+   Flag = "HighlightToggle",
+   Callback = function(Value)
+      isHighlightEnabled = Value
+      if isEspEnabled then
+        -- Recréer l'ESP pour appliquer les changements
+        toggleESP()
+        toggleESP()
+      end
+   end,
+})
+
+local TracersToggle = ESPTab:CreateToggle({
+   Name = "Tracers (lignes vers joueurs)",
+   CurrentValue = false,
+   Flag = "TracersToggle",
+   Callback = function(Value)
+      isTracersEnabled = Value
+      if isEspEnabled then
+        toggleESP()
+        toggleESP()
+      end
+   end,
+})
+
+local NametagsToggle = ESPTab:CreateToggle({
+   Name = "Nametags 3D",
+   CurrentValue = false,
+   Flag = "NametagsToggle",
+   Callback = function(Value)
+      isNametagsEnabled = Value
+      if isEspEnabled then
+        toggleESP()
+        toggleESP()
+      end
+   end,
+})
+
+local DistanceToggle = ESPTab:CreateToggle({
+   Name = "Afficher distances",
+   CurrentValue = false,
+   Flag = "DistanceToggle",
+   Callback = function(Value)
+      isDistanceEnabled = Value
+   end,
+})
+
+local TracerDistanceSlider = ESPTab:CreateSlider({
+   Name = "Distance max tracers",
+   Range = {100, 2000},
+   Increment = 50,
+   Suffix = "studs",
+   CurrentValue = 1000,
+   Flag = "TracerDistanceSlider",
+   Callback = function(Value)
+      tracerDistance = Value
+   end,
+})
+
+local ESPColorPicker = ESPTab:CreateColorPicker({
+   Name = "Couleur ESP",
+   Color = Color3.fromRGB(255, 0, 0),
+   Flag = "ESPColorPicker",
+   Callback = function(Value)
+      espColor = Value
+      if isEspEnabled then
+        -- Recréer l'ESP avec la nouvelle couleur
+        toggleESP()
+        toggleESP()
+      end
+   end,
+})
+
+local ESPInfo = ESPTab:CreateParagraph({
+   Title = "Informations ESP",
+   Content = "ESP Master: Active/désactive tout l'ESP.\n\nHighlighting: Contour coloré autour des joueurs.\n\nTracers: Lignes depuis vous vers les autres joueurs.\n\nNametags 3D: Affiche les noms au-dessus des joueurs.\n\nDistances: Affiche la distance en temps réel.\n\nPersonnalisez la couleur et la portée des tracers!"
+})
+
+-- Onglet Troll
+local TrollTab = Window:CreateTab("Troll", 4483362458)
+
+local SpinAttackToggle = TrollTab:CreateToggle({
+   Name = "Spin Attack (Modéré)",
+   CurrentValue = false,
+   Flag = "SpinAttackToggle",
+   Callback = function(Value)
+      isSpinAttackEnabled = Value
+      toggleSpinAttack()
+   end,
+})
+
+local SlowSpinSpeedSlider = TrollTab:CreateSlider({
+   Name = "Vitesse rotation contrôlée",
+   Range = {50, 500},
+   Increment = 10,
+   Suffix = "rad/s",
+   CurrentValue = 157,
+   Flag = "SlowSpinSpeedSlider",
+   Callback = function(Value)
+      slowSpinSpeed = Value
+   end,
+})
+
+local SlowSpinToggle = TrollTab:CreateToggle({
+   Name = "Rotation Contrôlée (25 tours/sec)",
+   CurrentValue = false,
+   Flag = "SlowSpinToggle",
+   Callback = function(Value)
+      isSlowSpinEnabled = Value
+      toggleSlowSpin()
+   end,
+})
+
+local TpToPlayersToggle = TrollTab:CreateToggle({
+   Name = "TP sur joueurs actifs",
+   CurrentValue = false,
+   Flag = "TpToPlayersToggle",
+   Callback = function(Value)
+      isTpToPlayersEnabled = Value
+      toggleTpToPlayers()
+   end,
+})
+
+local AntiFallToggle = TrollTab:CreateToggle({
+   Name = "Anti-Fall (rester debout)",
+   CurrentValue = false,
+   Flag = "AntiFallToggle",
+   Callback = function(Value)
+      isAntiFallEnabled = Value
+      toggleAntiFall()
+   end,
+})
+
+local ScreenShakeToggle = TrollTab:CreateToggle({
+   Name = "Screen Shake (secouer écran)",
+   CurrentValue = false,
+   Flag = "ScreenShakeToggle",
+   Callback = function(Value)
+      isScreenShakeEnabled = Value
+      toggleScreenShake()
+   end,
+})
+
+local JumpSpamToggle = TrollTab:CreateToggle({
+   Name = "Jump Spam",
+   CurrentValue = false,
+   Flag = "JumpSpamToggle",
+   Callback = function(Value)
+      isJumpSpamEnabled = Value
+      toggleJumpSpam()
+   end,
+})
+
+local ChatSpamToggle = TrollTab:CreateToggle({
+   Name = "Chat Spam",
+   CurrentValue = false,
+   Flag = "ChatSpamToggle",
+   Callback = function(Value)
+      isChatSpamEnabled = Value
+      toggleChatSpam()
+   end,
+})
+
+local CameraFlipToggle = TrollTab:CreateToggle({
+   Name = "Camera Flip (rotation cam)",
+   CurrentValue = false,
+   Flag = "CameraFlipToggle",
+   Callback = function(Value)
+      isCameraFlipEnabled = Value
+      toggleCameraFlip()
+   end,
+})
+
+local LagBombToggle = TrollTab:CreateToggle({
+   Name = "Lag Bomb ⚠️ (Dangereux)",
+   CurrentValue = false,
+   Flag = "LagBombToggle",
+   Callback = function(Value)
+      isLagBombEnabled = Value
+      toggleLagBomb()
+   end,
+})
+
+local TrollInfo = TrollTab:CreateParagraph({
+   Title = "⚠️ SECTION BETA - TROLL ADVANCED ⚠️",
+   Content = "🔧 VERSION BETA - CERTAINS BOUTONS PEUVENT NE PAS FONCTIONNER 🔧\n\n🔥 NOUVELLES OPTIONS TROLL 🔥\n\nSpin Attack: Rotation modérée mais efficace.\n\nRotation Contrôlée: Exactement 25 tours/seconde.\n\nScreen Shake: Secoue votre écran.\n\nJump Spam: Saute en continu.\n\nChat Spam: Messages automatiques.\n\nCamera Flip: Rotation de caméra.\n\nLag Bomb: Créer du lag (ATTENTION!)\n\n⚠️ ATTENTION: Cette section est en développement, certaines fonctionnalités peuvent être instables."
+})
+
+
+
+-- Onglet Paramètres
+local SettingsTab = Window:CreateTab("Paramètres", 4483362458)
+
+local AutoRestoreToggle = SettingsTab:CreateToggle({
+   Name = "Auto-restaurer config au démarrage",
+   CurrentValue = configData.autoRestoreSettings,
+   Flag = "AutoRestoreToggle",
+   Callback = function(Value)
+      configData.autoRestoreSettings = Value
+   end,
+})
+
+local FpsBoostToggle = SettingsTab:CreateToggle({
+   Name = "Boost FPS (réduire qualité graphique)",
+   CurrentValue = false,
+   Flag = "FpsBoostToggle",
+   Callback = function(Value)
+      isFpsBoostEnabled = Value
+      toggleFpsBoost()
+   end,
+})
+
+local SaveConfigButton = SettingsTab:CreateButton({
+   Name = "Sauvegarder configuration actuelle",
+   Callback = function()
+      saveConfiguration()
+      print("Configuration sauvegardée!")
+   end,
+})
+
+local RestoreConfigButton = SettingsTab:CreateButton({
+   Name = "Restaurer configuration",
+   Callback = function()
+      restoreConfiguration()
+      print("Configuration restaurée!")
+   end,
+})
+
+local SettingsInfo = SettingsTab:CreateParagraph({
+   Title = "Infos Paramètres",
+   Content = "Auto-restaurer: Restaure automatiquement tous vos réglages au démarrage du script.\n\nBoost FPS: Réduit la qualité graphique pour améliorer les performances (supprime ombres, effets, particules).\n\nSauvegarder: Sauvegarde votre configuration actuelle.\n\nRestaurer: Applique la configuration sauvegardée."
+})
+
+-- Onglet Admin
+local AdminTab = Window:CreateTab("Admin", 4483362458)
+
+local AdminPanelButton = AdminTab:CreateButton({
+   Name = "Admin Panel",
+   Callback = function()
+      local player = game.Players.LocalPlayer
+      local adminGui = player.PlayerGui:FindFirstChild("AdminGui")
+      if adminGui then
+          adminGui.Enabled = true
+          print("Admin panel activé !")
+      else
+          warn("AdminGui pas trouvé dans PlayerGui !")
+      end
+   end,
+})
+
+local LuckyInfiniteButton = AdminTab:CreateButton({
+   Name = "Lucky Infinite (x2 & x3 Luck)",
+   Callback = function()
+      local AdminEvent = game.ReplicatedStorage.Events:FindFirstChild("Admin")
+      if AdminEvent then
+          AdminEvent:FireServer("x2")
+          AdminEvent:FireServer("x3")
+          print("Essayé d'activer x2 et x3 luck.")
+      else
+          warn("Admin RemoteEvent introuvable !")
+      end
+   end,
+})
+
+-- Auto-application des boosts lors du respawn
+player.CharacterAdded:Connect(function()
+  task.wait(1)
+
+  -- Restaurer la configuration si activé
+  if configData.autoRestoreSettings then
+    restoreConfiguration()
+  else
+    -- Application normale des boosts
+    if isSpeedEnabled then toggleSpeed() end
+    if isJumpEnabled then toggleJump() end
+    if isNoClipEnabled then toggleNoClip() end
+    if isInvisible then toggleInvisibility() end
+  end
+
+  -- Recréer l'ESP pour le nouveau personnage
+  if isEspEnabled then
+    task.wait(0.5)
+    toggleESP()
+    toggleESP()
+  end
+
+  if isFlying then 
+    isFlying = false
+    FlyToggle:Set(false)
+    -- Nettoyer l'interface mobile
+    if flyGui then
+      flyGui:Destroy()
+      flyGui = nil
+    end
+  end
+  -- Réinitialiser la connexion du saut infini
   if infiniteJumpConnection then
     infiniteJumpConnection:Disconnect()
     infiniteJumpConnection = nil
+    InfiniteJumpToggle:Set(false)
   end
-  
-  -- Reset infinite jump toggle
-  infiniteJumpEnabled = false
-  infiniteJumpToggle.Text = "🚀 Saut Infini: OFF"
-  infiniteJumpToggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-  
-  boostActive = false
-end
+  -- Réinitialiser les fonctions de troll
+  if isSpinAttackEnabled then
+    isSpinAttackEnabled = false
+    SpinAttackToggle:Set(false)
+  end
+  if isSlowSpinEnabled then
+    isSlowSpinEnabled = false
+    SlowSpinToggle:Set(false)
+  end
+  if isTpToPlayersEnabled then
+    isTpToPlayersEnabled = false
+    TpToPlayersToggle:Set(false)
+  end
+  if isAntiFallEnabled then
+    isAntiFallEnabled = false
+    AntiFallToggle:Set(false)
+  end
+  if isAntiVoidEnabled then
+    isAntiVoidEnabled = false
+    AntiVoidToggle:Set(false)
+  end
+  if isFpsBoostEnabled then
+    isFpsBoostEnabled = false
+    FpsBoostToggle:Set(false)
+  end
+  if isScreenShakeEnabled then
+    isScreenShakeEnabled = false
+    ScreenShakeToggle:Set(false)
+  end
+  if isJumpSpamEnabled then
+    isJumpSpamEnabled = false
+    JumpSpamToggle:Set(false)
+  end
+  if isChatSpamEnabled then
+    isChatSpamEnabled = false
+    ChatSpamToggle:Set(false)
+  end
+  if isLagBombEnabled then
+    isLagBombEnabled = false
+    LagBombToggle:Set(false)
+  end
+  if isCameraFlipEnabled then
+    isCameraFlipEnabled = false
+    CameraFlipToggle:Set(false)
+  end
+  -- Nettoyage du bouton mobile
+  if mobileToggleGui then
+    mobileToggleGui:Destroy()
+    mobileToggleGui = nil
+    isPanelVisible = true
+  end
 
--- Button Connections
-applyBoostButton.MouseButton1Click:Connect(applyBoost)
-stopBoostButton.MouseButton1Click:Connect(stopBoost)
+  -- Nettoyage des connexions
+  if spinConnection then
+    spinConnection:Disconnect()
+    spinConnection = nil
+  end
+  if slowSpinConnection then
+    slowSpinConnection:Disconnect()
+    slowSpinConnection = nil
+  end
+  if tpToPlayersConnection then
+    task.cancel(tpToPlayersConnection)
+    tpToPlayersConnection = nil
+  end
+  if antiFallConnection then
+    antiFallConnection:Disconnect()
+    antiFallConnection = nil
+  end
+  if antiVoidConnection then
+    antiVoidConnection:Disconnect()
+    antiVoidConnection = nil
+  end
+  if screenShakeConnection then
+    screenShakeConnection:Disconnect()
+    screenShakeConnection = nil
+  end
+  if jumpSpamConnection then
+    task.cancel(jumpSpamConnection)
+    jumpSpamConnection = nil
+  end
+  if chatSpamConnection then
+    task.cancel(chatSpamConnection)
+    chatSpamConnection = nil
+  end
+  if lagBombConnection then
+    task.cancel(lagBombConnection)
+    lagBombConnection = nil
+  end
+  if cameraFlipConnection then
+    cameraFlipConnection:Disconnect()
+    cameraFlipConnection = nil
+  end
 
--- Make boost frame draggable (only on PC)
-if not isMobile then
-  makeDraggable(boostFrame)
-end
 
--- Speed Boost Button (now opens config with animation)
-speedButton.MouseButton1Click:Connect(function()
-  boostFrame.Visible = true
-  boostFrame.Size = UDim2.new(0, 0, 0, 0)
-  boostFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-  
-  local openTween = TweenService:Create(
-    boostFrame,
-    TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-    {
-      Size = UDim2.new(0, boostFrameWidth, 0, boostFrameHeight),
-      Position = UDim2.new(0.5, -boostFrameWidth/2, 0.5, -boostFrameHeight/2)
-    }
-  )
-  openTween:Play()
+
 end)
 
--- Init slider
-task.wait(1)
-updateSlider(sliderBar.AbsolutePosition.X + sliderBar.AbsoluteSize.X * 0.5)
+-- Initialiser la restauration automatique au démarrage
+task.spawn(function()
+  task.wait(2) -- Attendre que tout soit chargé
+  if configData.autoRestoreSettings then
+    restoreConfiguration()
+  end
+  
+  -- Créer le bouton mobile si on est sur mobile
+  if isMobile then
+    task.wait(1) -- Attendre que l'interface soit complètement chargée
+    createMobileToggleButton()
+  end
+-- Recréer le bouton mobile si nécessaire
+  if isMobile then
+    task.wait(1)
+    createMobileToggleButton()
+  end
+end)
+
+print("Script multifunctionnel avec Téléportation, Boost, Fly et Admin chargé!")
